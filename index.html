@@ -26,7 +26,7 @@ li{padding:10px 0;border-bottom:1px solid #eee;display:flex;justify-content:spac
 ul{list-style:none;padding:0}
 .hidden{display:none!important}
 #status{white-space:pre-wrap;overflow-wrap:anywhere}
-.code{font-family:ui-monospace,monospace;overflow-wrap:anywhere;background:#f0f6ef;padding:12px;border-radius:10px;user-select:all}
+.code{font-family:monospace;overflow-wrap:anywhere;background:#f0f6ef;padding:12px;border-radius:10px;user-select:all}
 .tiles{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .tile{min-height:135px;text-align:left;background:#edf6ee;color:#294c37;padding:16px;display:flex;flex-direction:column;gap:9px;justify-content:center}
 .tile strong{font-size:18px}
@@ -41,6 +41,11 @@ ul{list-style:none;padding:0}
 .photoBox{border:2px dashed #bcd1c2;border-radius:16px;padding:16px;text-align:center;background:#f8fbf8}
 .photoBox img{width:100%;max-height:340px;object-fit:contain;border-radius:12px;margin:12px 0}
 .photoBox input{font-size:14px}
+.wide{width:100%;margin-top:12px}
+.result{background:#f3f9f3;border-radius:12px;padding:12px;margin-top:16px}
+.candidate{display:flex;align-items:center;gap:8px;margin:8px 0}
+.candidate input[type=checkbox]{width:22px;flex:none}
+.candidate input[type=text]{flex:1;min-width:0}
 </style>
 </head>
 <body>
@@ -102,7 +107,6 @@ ul{list-style:none;padding:0}
 <h2>🧊 うちの冷蔵庫</h2>
 <label for="householdSelect">使用する冷蔵庫</label>
 <select id="householdSelect"></select>
-
 <h3>✏️ 手入力で登録</h3>
 <form id="foodForm" class="row">
 <input id="food" placeholder="例：たまご" maxlength="100" required>
@@ -114,7 +118,7 @@ ul{list-style:none;padding:0}
 
 <div class="card">
 <h2>📷 写真から登録</h2>
-<p>冷蔵庫の中身や食材の写真を撮影・選択できます。</p>
+<p>食材の写真を選んで、AIに読み取ってもらおう！</p>
 <div class="photoBox">
 <label for="photoInput">写真を選択・撮影</label>
 <input id="photoInput" type="file" accept="image/*">
@@ -124,8 +128,15 @@ ul{list-style:none;padding:0}
 <button id="clearPhoto" class="secondary" type="button">写真を取り消す</button>
 </div>
 </div>
-<p class="note">現在は写真のプレビューまで対応しています。AIによる食材の自動認識は次回追加予定です。</p>
-<p class="note">写真は端末内でプレビューするだけで、サーバーには送信・保存しません。</p>
+<button id="recognize" class="wide hidden" type="button">✨ AIで食材を読み取る</button>
+<div id="resultBox" class="result hidden">
+<h3>✨ AIの認識結果</h3>
+<p class="note">登録する食材にチェックを入れ、名前が違えば修正してね。</p>
+<div id="candidates"></div>
+<button id="addCandidate" class="secondary" type="button">＋ 食材を追加</button>
+<button id="saveCandidates" class="wide" type="button">🧊 冷蔵庫にまとめて登録</button>
+</div>
+<p class="note">AI認識時に写真をGoogleのGeminiへ送信します。写真自体は冷蔵庫に保存しません。個人情報が写らない写真を使ってください。</p>
 </div>
 </section>
 
@@ -155,7 +166,7 @@ ul{list-style:none;padding:0}
 <section class="card">
 <p id="status" role="status">準備中...</p>
 </section>
-<p class="note">試作版 v0.7｜写真選択・プレビュー機能を追加しました。</p>
+<p class="note">試作版 v0.8｜AI画像認識と一括登録に対応</p>
 </main>
 
 <script type="module">
@@ -170,6 +181,8 @@ let householdId=null;
 let activeUser=null;
 let inviteValue='';
 let photoURL=null;
+let selectedFile=null;
+let busy=false;
 
 function message(s){
  $('status').textContent=s;
@@ -196,49 +209,171 @@ document.querySelectorAll('.navBtn').forEach(btn=>{
 });
 
 function clearPhoto(){
- if(photoURL){
-  URL.revokeObjectURL(photoURL);
-  photoURL=null;
- }
+ if(photoURL)URL.revokeObjectURL(photoURL);
+ photoURL=null;
+ selectedFile=null;
  $('photoInput').value='';
  $('photoPreview').removeAttribute('src');
  $('photoName').textContent='';
  $('photoPreviewBox').classList.add('hidden');
+ $('recognize').classList.add('hidden');
+ $('resultBox').classList.add('hidden');
+ $('candidates').replaceChildren();
 }
 
 $('photoInput').onchange=()=>{
  const file=$('photoInput').files?.[0];
- clearPreviewOnly();
+ clearPhoto();
  if(!file)return;
  if(!file.type.startsWith('image/')){
   message('画像ファイルを選択してください');
-  $('photoInput').value='';
   return;
  }
  if(file.size>15*1024*1024){
   message('15MB以下の画像を選択してください');
-  $('photoInput').value='';
   return;
  }
+ selectedFile=file;
  photoURL=URL.createObjectURL(file);
  $('photoPreview').src=photoURL;
  $('photoName').textContent='選択した写真：'+file.name;
  $('photoPreviewBox').classList.remove('hidden');
- message('写真を読み込みました。AI認識は次の更新で追加します。');
+ $('recognize').classList.remove('hidden');
+ message('写真を選択しました。AIで読み取ってみよう！');
 };
 
-function clearPreviewOnly(){
- if(photoURL){
-  URL.revokeObjectURL(photoURL);
-  photoURL=null;
- }
- $('photoPreview').removeAttribute('src');
- $('photoPreviewBox').classList.add('hidden');
+$('clearPhoto').onclick=()=>{
+ if(busy)return;
+ clearPhoto();
+ message('写真を取り消しました');
+};
+
+function addCandidateRow(name=''){
+ const row=document.createElement('div');
+ row.className='candidate';
+ const check=document.createElement('input');
+ check.type='checkbox';
+ check.checked=true;
+ check.setAttribute('aria-label','この食材を登録する');
+ const input=document.createElement('input');
+ input.type='text';
+ input.maxLength=100;
+ input.placeholder='食材名';
+ input.value=name;
+ row.append(check,input);
+ $('candidates').append(row);
 }
 
-$('clearPhoto').onclick=()=>{
- clearPhoto();
- message('写真の選択を取り消しました');
+$('addCandidate').onclick=()=>addCandidateRow();
+
+function fileToJpeg(file){
+ return new Promise((resolve,reject)=>{
+  const img=new Image();
+  const src=URL.createObjectURL(file);
+  img.onload=()=>{
+   try{
+    const scale=Math.min(1,1200/Math.max(img.width,img.height));
+    const canvas=document.createElement('canvas');
+    canvas.width=Math.max(1,Math.round(img.width*scale));
+    canvas.height=Math.max(1,Math.round(img.height*scale));
+    canvas.getContext('2d').drawImage(img,0,0,canvas.width,canvas.height);
+    const dataURL=canvas.toDataURL('image/jpeg',0.75);
+    URL.revokeObjectURL(src);
+    resolve({
+     mimeType:'image/jpeg',
+     image:dataURL.split(',')[1]
+    });
+   }catch(e){
+    URL.revokeObjectURL(src);
+    reject(e);
+   }
+  };
+  img.onerror=()=>{
+   URL.revokeObjectURL(src);
+   reject(new Error('写真を読み込めませんでした'));
+  };
+  img.src=src;
+ });
+}
+
+$('recognize').onclick=async()=>{
+ if(!selectedFile||busy)return;
+ busy=true;
+ $('recognize').disabled=true;
+ $('recognize').textContent='⏳ AIが写真を確認中...';
+ $('resultBox').classList.add('hidden');
+ message('AIが写真を解析しています...');
+ try{
+  const image=await fileToJpeg(selectedFile);
+  if(image.image.length>5600000){
+   throw new Error('写真が大きすぎます');
+  }
+  const {data,error}=await db.functions.invoke('recognize-ingredients',{
+   body:image
+  });
+  if(error){
+   let detail=error.message;
+   if(error.context){
+    try{
+     const body=await error.context.json();
+     detail=body.error||detail;
+    }catch(_){}
+   }
+   throw new Error(detail);
+  }
+  if(data?.error)throw new Error(data.error);
+  if(!Array.isArray(data?.ingredients)){
+   throw new Error('AIの回答を読み取れませんでした');
+  }
+  $('candidates').replaceChildren();
+  for(const name of data.ingredients){
+   if(typeof name==='string')addCandidateRow(name);
+  }
+  $('resultBox').classList.remove('hidden');
+  message(data.ingredients.length
+   ?'認識できました！内容を確認して登録してね。'
+   :'食材を特定できませんでした。手動で候補を追加できます。');
+ }catch(e){
+  message('AI認識エラー：'+e.message);
+ }finally{
+  busy=false;
+  $('recognize').disabled=false;
+  $('recognize').textContent='✨ AIで食材を読み取る';
+ }
+};
+
+$('saveCandidates').onclick=async()=>{
+ if(busy)return;
+ if(!householdId){
+  message('冷蔵庫を選択してください');
+  return;
+ }
+ const names=[...$('candidates').querySelectorAll('.candidate')]
+  .filter(row=>row.querySelector('[type=checkbox]').checked)
+  .map(row=>row.querySelector('[type=text]').value.trim())
+  .filter(Boolean);
+ const unique=[...new Set(names)];
+ if(!unique.length){
+  message('登録する食材を1つ以上選んでね');
+  return;
+ }
+ busy=true;
+ $('saveCandidates').disabled=true;
+ message('食材をまとめて保存中...');
+ try{
+  const {error}=await db.from('ingredients').insert(
+   unique.map(name=>({household_id:householdId,name}))
+  );
+  if(error)throw error;
+  await loadItems();
+  clearPhoto();
+  message(unique.length+'件の食材を冷蔵庫に登録しました！');
+ }catch(e){
+  message('保存エラー：'+e.message);
+ }finally{
+  busy=false;
+  $('saveCandidates').disabled=false;
+ }
 };
 
 function show(user){
@@ -390,6 +525,7 @@ $('logout').onclick=async()=>{
 
 $('householdSelect').onchange=async()=>{
  householdId=$('householdSelect').value;
+ clearPhoto();
  localStorage.setItem(savedKey(),householdId);
  try{
   await loadItems();
