@@ -38,16 +38,18 @@ ul{list-style:none;padding:0}
 .nav button.active{background:#287c4b;color:white}
 .page{display:none}
 .page.active{display:block}
+.photoBox{border:2px dashed #bcd1c2;border-radius:16px;padding:16px;text-align:center;background:#f8fbf8}
+.photoBox img{width:100%;max-height:340px;object-fit:contain;border-radius:12px;margin:12px 0}
+.photoBox input{font-size:14px}
 </style>
 </head>
 <body>
-<header>
-<main>
+<header><main>
 <h1>🏡 うちの暮らし</h1>
 <p>家族の毎日を、ひとつに。</p>
-</main>
-</header>
+</main></header>
 <main>
+
 <section class="card" id="authBox">
 <h2>ログイン・新規登録</h2>
 <input id="email" type="email" placeholder="メールアドレス" autocomplete="email">
@@ -100,12 +102,30 @@ ul{list-style:none;padding:0}
 <h2>🧊 うちの冷蔵庫</h2>
 <label for="householdSelect">使用する冷蔵庫</label>
 <select id="householdSelect"></select>
+
+<h3>✏️ 手入力で登録</h3>
 <form id="foodForm" class="row">
 <input id="food" placeholder="例：たまご" maxlength="100" required>
 <button>追加</button>
 </form>
 <ul id="items"></ul>
 <p class="note">食材はクラウドに保存されます。</p>
+</div>
+
+<div class="card">
+<h2>📷 写真から登録</h2>
+<p>冷蔵庫の中身や食材の写真を撮影・選択できます。</p>
+<div class="photoBox">
+<label for="photoInput">写真を選択・撮影</label>
+<input id="photoInput" type="file" accept="image/*">
+<div id="photoPreviewBox" class="hidden">
+<img id="photoPreview" alt="選択した食材の写真">
+<p id="photoName" class="note"></p>
+<button id="clearPhoto" class="secondary" type="button">写真を取り消す</button>
+</div>
+</div>
+<p class="note">現在は写真のプレビューまで対応しています。AIによる食材の自動認識は次回追加予定です。</p>
+<p class="note">写真は端末内でプレビューするだけで、サーバーには送信・保存しません。</p>
 </div>
 </section>
 
@@ -135,7 +155,7 @@ ul{list-style:none;padding:0}
 <section class="card">
 <p id="status" role="status">準備中...</p>
 </section>
-<p class="note">試作版 v0.6｜共通ホーム画面を追加しました。</p>
+<p class="note">試作版 v0.7｜写真選択・プレビュー機能を追加しました。</p>
 </main>
 
 <script type="module">
@@ -149,6 +169,7 @@ const $=id=>document.getElementById(id);
 let householdId=null;
 let activeUser=null;
 let inviteValue='';
+let photoURL=null;
 
 function message(s){
  $('status').textContent=s;
@@ -173,6 +194,52 @@ document.querySelectorAll('[data-go]').forEach(btn=>{
 document.querySelectorAll('.navBtn').forEach(btn=>{
  btn.onclick=()=>navigate(btn.dataset.page);
 });
+
+function clearPhoto(){
+ if(photoURL){
+  URL.revokeObjectURL(photoURL);
+  photoURL=null;
+ }
+ $('photoInput').value='';
+ $('photoPreview').removeAttribute('src');
+ $('photoName').textContent='';
+ $('photoPreviewBox').classList.add('hidden');
+}
+
+$('photoInput').onchange=()=>{
+ const file=$('photoInput').files?.[0];
+ clearPreviewOnly();
+ if(!file)return;
+ if(!file.type.startsWith('image/')){
+  message('画像ファイルを選択してください');
+  $('photoInput').value='';
+  return;
+ }
+ if(file.size>15*1024*1024){
+  message('15MB以下の画像を選択してください');
+  $('photoInput').value='';
+  return;
+ }
+ photoURL=URL.createObjectURL(file);
+ $('photoPreview').src=photoURL;
+ $('photoName').textContent='選択した写真：'+file.name;
+ $('photoPreviewBox').classList.remove('hidden');
+ message('写真を読み込みました。AI認識は次の更新で追加します。');
+};
+
+function clearPreviewOnly(){
+ if(photoURL){
+  URL.revokeObjectURL(photoURL);
+  photoURL=null;
+ }
+ $('photoPreview').removeAttribute('src');
+ $('photoPreviewBox').classList.add('hidden');
+}
+
+$('clearPhoto').onclick=()=>{
+ clearPhoto();
+ message('写真の選択を取り消しました');
+};
 
 function show(user){
  $('authBox').classList.toggle('hidden',!!user);
@@ -264,6 +331,7 @@ async function initialize(user){
  activeUser=user;
  householdId=null;
  show(user);
+ clearPhoto();
  $('inviteCode').classList.add('hidden');
  $('copyInvite').classList.add('hidden');
  inviteValue='';
@@ -420,6 +488,7 @@ try{
   if(event==='SIGNED_OUT'){
    activeUser=null;
    householdId=null;
+   clearPhoto();
    show(null);
    message('ログアウトしました');
   }
