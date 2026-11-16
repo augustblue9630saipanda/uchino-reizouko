@@ -1,1 +1,183 @@
-<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>うちの冷蔵庫</title><style>body{margin:0;font-family:system-ui,sans-serif;background:#f5f8f3;color:#284735}header{background:#ddf2e2;padding:28px 18px}main{max-width:650px;margin:auto;padding:16px}h1{margin:0}.card{background:white;border-radius:18px;padding:18px;margin:16px 0;box-shadow:0 3px 12px #183d2010}form{display:flex;gap:8px}input,button{font:inherit;padding:12px;border-radius:10px}input[type=text]{min-width:0;flex:1;border:1px solid #bcd1c2}button{border:0;background:#287c4b;color:white}ul{list-style:none;padding:0}li{padding:10px 0;border-bottom:1px solid #eee;display:flex;justify-content:space-between;align-items:center}li button{background:#e6f1e8;color:#285a3b}.tag{display:inline-block;background:#e7f3e8;padding:8px 12px;margin:4px;border-radius:20px}.note{font-size:13px;color:#667b6c}#preview{max-width:100%;max-height:220px;margin-top:10px}</style></head><body><header><main><h1>🥬 うちの冷蔵庫</h1><p>食材から今日のごはんを考えよう</p></main></header><main><section class="card"><h2>食材を追加</h2><form id="form"><input id="food" type="text" placeholder="例：たまご" required maxlength="50"><button type="submit">追加</button></form><p id="status" class="note"></p></section><section class="card"><h2>冷蔵庫の中身 <span id="count"></span></h2><ul id="items"></ul></section><section class="card"><h2>🍳 献立のヒント</h2><div id="menus"></div><p class="note">簡易提案です。必要な材料がすべて揃っているとは限りません。</p></section><section class="card"><h2>📷 写真で登録（準備中）</h2><input type="file" id="photo" accept="image/*" capture="environment"><img id="preview" hidden alt="選択した写真"><p class="note">写真プレビューのみ。食材自動認識は今後対応。</p></section><p class="note">試作版 v0.3｜夫婦共有・ログインは未対応。食材はこのブラウザに保存されます。</p></main><script>(function(){var key='uchino-reizouko-v3',items=[],$=function(id){return document.getElementById(id)};try{var saved=JSON.parse(localStorage.getItem(key)||'[]');if(Array.isArray(saved))items=saved}catch(e){}function save(){try{localStorage.setItem(key,JSON.stringify(items));$('status').textContent='保存しました'}catch(e){$('status').textContent='追加できましたが、この環境では保存できません'}}function render(){$('count').textContent='('+items.length+'品)';$('items').replaceChildren();if(!items.length){var p=document.createElement('p');p.textContent='食材を追加してみよう！';$('items').appendChild(p)}items.forEach(function(x,i){var li=document.createElement('li'),s=document.createElement('span'),b=document.createElement('button');s.textContent=x;b.textContent='削除';b.onclick=function(){items.splice(i,1);save();render()};li.append(s,b);$('items').appendChild(li)});var recipes=[['卵焼き',['たまご','卵']],['野菜炒め',['キャベツ','にんじん','豚肉']],['チャーハン',['ごはん','卵','たまご']],['カレー',['じゃがいも','玉ねぎ']],['味噌汁',['豆腐','わかめ']],['トマトサラダ',['トマト']]];var found=recipes.filter(function(r){return r[1].some(function(k){return items.some(function(x){return x.includes(k)})})});$('menus').replaceChildren();if(!found.length)$('menus').textContent='食材を追加すると候補が表示されます';found.forEach(function(r){var t=document.createElement('span');t.className='tag';t.textContent=r[0];$('menus').appendChild(t)})}$('form').addEventListener('submit',function(e){e.preventDefault();var x=$('food').value.trim();if(!x)return;if(!items.includes(x))items.push(x);$('food').value='';save();render()});$('photo').addEventListener('change',function(e){var f=e.target.files&&e.target.files[0];if(!f)return;var r=new FileReader();r.onload=function(){$('preview').src=r.result;$('preview').hidden=false};r.readAsDataURL(f)});render()})();</script></body></html>
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>うちの冷蔵庫</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#f5f8f3;color:#294c37;font-family:system-ui,sans-serif}
+header{background:#ddf2e2;padding:24px 16px}
+main{max-width:620px;margin:auto;padding:16px}
+h1{margin:0;font-size:26px}
+.card{background:white;border-radius:18px;padding:18px;margin:16px 0;box-shadow:0 3px 12px #183d2010}
+input,button{font:inherit;border-radius:10px;padding:12px}
+input{width:100%;border:1px solid #bcd1c2;margin:5px 0}
+button{border:0;background:#287c4b;color:white;cursor:pointer}
+button:disabled{opacity:.5}
+.row{display:flex;gap:8px;align-items:center}
+.row input{flex:1;min-width:0}
+.row button{flex-shrink:0}
+.secondary{background:#e6f1e8;color:#285a3b}
+.note{font-size:13px;color:#667b6c}
+li{padding:10px 0;border-bottom:1px solid #eee;display:flex;justify-content:space-between;align-items:center;gap:8px}
+ul{list-style:none;padding:0}
+.hidden{display:none}
+#status{white-space:pre-wrap}
+</style>
+</head>
+<body>
+<header><main>
+<h1>🥬 うちの冷蔵庫</h1>
+<p>家族の食材を、もっと便利に。</p>
+</main></header>
+<main>
+<section class="card" id="authBox">
+<h2>ログイン・新規登録</h2>
+<input id="email" type="email" placeholder="メールアドレス" autocomplete="email">
+<input id="password" type="password" placeholder="パスワード（6文字以上）" autocomplete="current-password">
+<div class="row">
+<button id="login">ログイン</button>
+<button id="signup" class="secondary">新規登録</button>
+</div>
+<p class="note">新規登録後、確認メールが届く場合があります。</p>
+</section>
+
+<section class="card hidden" id="appBox">
+<p id="account"></p>
+<button id="logout" class="secondary">ログアウト</button>
+<h2>🧊 冷蔵庫の中身</h2>
+<form id="foodForm" class="row">
+<input id="food" placeholder="例：たまご" maxlength="100" required>
+<button>追加</button>
+</form>
+<ul id="items"></ul>
+<p class="note">食材はクラウドに保存されます。</p>
+</section>
+
+<section class="card">
+<p id="status" role="status">準備中...</p>
+</section>
+<p class="note">試作版 v0.4｜家族の招待機能は次回追加予定です。</p>
+</main>
+
+<script type="module">
+import {createClient} from
+'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+
+const url='https://moorgivgwmkbxyjvwuih.supabase.co';
+const key='sb_publishable_4cMwMgr654spcCXTKnsabw_a6AEu77x';
+const db=createClient(url,key);
+const $=id=>document.getElementById(id);
+let householdId=null;
+
+function message(s){$('status').textContent=s}
+function show(user){
+$('authBox').classList.toggle('hidden',!!user);
+$('appBox').classList.toggle('hidden',!user);
+$('account').textContent=user?'ログイン中：'+user.email:'';
+}
+
+async function loadHousehold(){
+const {data,error}=await db.from('households').select('id').limit(1);
+if(error)throw error;
+if(data.length)return data[0].id;
+const result=await db.rpc('create_household',{household_name:'うちの冷蔵庫'});
+if(result.error)throw result.error;
+return result.data;
+}
+
+async function loadItems(){
+const {data,error}=await db.from('ingredients')
+.select('id,name')
+.eq('household_id',householdId)
+.order('created_at',{ascending:false});
+if(error)throw error;
+const ul=$('items');
+ul.replaceChildren();
+if(!data.length){
+const li=document.createElement('li');
+li.textContent='食材を追加してみよう！';
+ul.append(li);
+}
+for(const item of data){
+const li=document.createElement('li');
+const span=document.createElement('span');
+span.textContent=item.name;
+const btn=document.createElement('button');
+btn.className='secondary';
+btn.textContent='削除';
+btn.onclick=async()=>{
+btn.disabled=true;
+const {error}=await db.from('ingredients').delete().eq('id',item.id);
+if(error){message('削除失敗：'+error.message);btn.disabled=false;return}
+await loadItems();
+};
+li.append(span,btn);
+ul.append(li);
+}
+}
+
+async function initialize(user){
+show(user);
+householdId=null;
+if(!user){message('ログインしてください');return}
+try{
+message('冷蔵庫を読み込み中...');
+householdId=await loadHousehold();
+await loadItems();
+message('冷蔵庫の準備ができました！');
+}catch(e){message('読み込みエラー：'+e.message)}
+}
+
+$('signup').onclick=async()=>{
+const email=$('email').value.trim();
+const password=$('password').value;
+if(!email||password.length<6){
+message('メールアドレスと6文字以上のパスワードを入力してください');return;
+}
+message('登録中...');
+const {data,error}=await db.auth.signUp({email,password});
+if(error){message('登録エラー：'+error.message);return}
+if(data.session)await initialize(data.user);
+else message('確認メールが届いていれば、メール内のリンクを開いてからログインしてください。');
+};
+
+$('login').onclick=async()=>{
+message('ログイン中...');
+const {data,error}=await db.auth.signInWithPassword({
+email:$('email').value.trim(),
+password:$('password').value
+});
+if(error){message('ログインエラー：'+error.message);return}
+await initialize(data.user);
+};
+
+$('logout').onclick=async()=>{
+await db.auth.signOut();
+await initialize(null);
+};
+
+$('foodForm').onsubmit=async e=>{
+e.preventDefault();
+if(!householdId)return;
+const name=$('food').value.trim();
+if(!name)return;
+message('保存中...');
+const {error}=await db.from('ingredients').insert({
+household_id:householdId,name
+});
+if(error){message('保存エラー：'+error.message);return}
+$('food').value='';
+await loadItems();
+message('保存しました！');
+};
+
+const {data:{session}}=await db.auth.getSession();
+await initialize(session?.user||null);
+db.auth.onAuthStateChange((event,session)=>{
+if(event==='SIGNED_OUT')show(null);
+});
+</script>
+</body>
+</html>
