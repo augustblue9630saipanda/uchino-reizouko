@@ -1,5 +1,7 @@
 # AI夕飯プラン：テスト環境の準備と確認
 
+更新：テスト用キーの登録と `gemini-3.5-flash-lite` へのJSON通信成功の報告を受けました。まずDBを変更せず実生成を試す手順は [AI-DINNER-NEXT-TEST.md](AI-DINNER-NEXT-TEST.md) を参照してください。以下は登録済み食材を使う通常機能の接続手順です。
+
 このブランチは、先に確認した献立提案ブランチを引き継いでいます。mainへのマージ・本番公開は行っていません。
 新しいAI献立は `index.html` の `const dinnerEnabled=false;` により無効です。従来のログイン・共有・写真認識・冷蔵庫・定番料理の提案は維持しています。
 
@@ -18,7 +20,7 @@ Google AI Studioの管理画面でテスト用キーを準備し、Supabaseの**
 | 名前 | 設定する内容 |
 | --- | --- |
 | `GEMINI_API_KEY` | テスト用Geminiキー |
-| `GEMINI_MODEL` | 利用可能で構造化JSON出力に対応するモデル。例：`gemini-2.5-flash`。利用可否はGoogle側で確認 |
+| `GEMINI_MODEL` | `gemini-3.5-flash-lite`（省略時も同じ）。他の構造化JSON対応モデルにも変更可能 |
 | `DINNER_ALLOWED_ORIGINS` | 例：`http://localhost:8000`。複数ならカンマ区切り |
 
 `SUPABASE_URL` と `SUPABASE_ANON_KEY` はホストされた関数にSupabaseが提供する値です。既存の同名シークレットを本番で変更する必要はありません。
@@ -68,7 +70,7 @@ AIが作った調理手順の意味や栄養・食べやすさはJSON形式の�
 ## 検証の状況
 
 このブランチではNodeの自動テストで模擬通信・認証・共有範囲・形式検証・画面表示・エラー・古い応答の破棄を検証します。
-テスト用Supabaseとキーが未準備のため、実際のGemini生成、テスト環境でのRLS、実ログインを伴う一連の確認は未実施です。実行したかのようなサンプル献立は表示しません。
+テスト用Supabaseへのキー設定と `test-gemini` のJSON通信は利用者が確認済みです。献立本体の実生成、テスト環境でのRLS、実ログインを伴う一連の確認はまだ完了していません。実行したかのようなサンプル献立は表示しません。
 
 ```sh
 node --test meal-suggestions.test.mjs tests/*.test.mjs

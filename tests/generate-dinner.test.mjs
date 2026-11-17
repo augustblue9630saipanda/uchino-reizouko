@@ -7,7 +7,7 @@ const householdId='11111111-1111-4111-8111-111111111111';
 const userId='22222222-2222-4222-8222-222222222222';
 function harness(options={}){
  const calls=[];
- const config={SUPABASE_URL:'https://test.supabase.co',SUPABASE_ANON_KEY:'public-test-key',GEMINI_API_KEY:'SERVER_ONLY_SECRET',GEMINI_MODEL:'gemini-2.5-flash',DINNER_ALLOWED_ORIGINS:'http://localhost:8000',...options.env};
+ const config={SUPABASE_URL:'https://test.supabase.co',SUPABASE_ANON_KEY:'public-test-key',GEMINI_API_KEY:'SERVER_ONLY_SECRET',GEMINI_MODEL:'gemini-3.5-flash-lite',DINNER_ALLOWED_ORIGINS:'http://localhost:8000',...options.env};
  let clock=100000;
  const fetchImpl=async(url,init)=>{
   calls.push({url,init});
@@ -17,7 +17,7 @@ function harness(options={}){
   if(options.throwError)throw options.throwError;
   return Response.json({candidates:[{finishReason:options.finishReason||'STOP',content:{parts:[{text:JSON.stringify(options.output||dinnerFixture())}]}}]},{status:options.geminiStatus||200});
  };
- const handler=createDinnerHandler({env:k=>config[k],fetchImpl,now:()=>clock});
+ const handler=createDinnerHandler({env:k=>config[k],fetchImpl,now:()=>clock,preview:options.preview||false});
  const request=(body={householdId},headers={})=>new Request('https://test.supabase.co/functions/v1/generate-dinner',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer user-jwt',Origin:'http://localhost:8000',...headers},body:JSON.stringify(body)});
  return {handler,calls,request,tick(){clock+=61000;}};
 }
@@ -68,4 +68,27 @@ test('contract rejects wrong role counts, missing quantities and duplicate patte
 test('CORS preflight works only for configured origins',async()=>{
  const h=harness();const r=await h.handler(new Request('https://test.example',{method:'OPTIONS',headers:{Origin:'http://localhost:8000'}}));
  assert.equal(r.status,204);assert.equal(r.headers.get('Access-Control-Allow-Origin'),'http://localhost:8000');assert.equal(h.calls.length,0);
+});
+
+test('default model uses the verified 3.5 Flash-Lite when only Gemini key is set',async()=>{
+ const h=harness({env:{GEMINI_MODEL:''}});const r=await h.handler(h.request());
+ assert.equal(r.status,200);assert.equal((await r.json()).model,'gemini-3.5-flash-lite');
+ const call=h.calls.at(-1);assert.ok(call.url.endsWith('/gemini-3.5-flash-lite:generateContent'));
+ const generation=JSON.parse(call.init.body).generationConfig;assert.equal(generation.responseMimeType,'application/json');assert.ok(generation.responseJsonSchema.properties.patterns);
+});
+test('preview authenticates but never reads or writes database; explicit staging configuration is mandatory',async()=>{
+ const config={DINNER_TEST_MODE:'true',DINNER_TEST_PROJECT_REF:'test'};
+ const h=harness({preview:true,env:config});const r=await h.handler(h.request({inventory:['卵','しめじ']}));
+ assert.equal(r.status,200);const d=await r.json();assert.equal(d.mode,'preview');assert.equal(d.householdId,null);
+ assert.deepEqual(d.inventory,['卵','しめじ']);assert.ok(h.calls.every(c=>!c.url.includes('/rest/')));
+ for(const env of [{},{...config,DINNER_TEST_MODE:'false'},{...config,DINNER_TEST_PROJECT_REF:'other'},{...config,DINNER_TEST_PROJECT_REF:'moorgivgwmkbxyjvwuih',SUPABASE_URL:'https://moorgivgwmkbxyjvwuih.supabase.co'}]){
+  const denied=harness({preview:true,env});assert.equal((await denied.handler(denied.request({inventory:['卵']}))).status,403);assert.equal(denied.calls.length,0);
+ }
+ const unauthorized=harness({preview:true,env:config,authStatus:401});assert.equal((await unauthorized.handler(unauthorized.request({inventory:['卵']}))).status,401);assert.ok(unauthorized.calls.every(c=>!c.url.includes('googleapis')));
+});
+test('preview validates supplied sample food, normal endpoint continues to reject client inventory',async()=>{
+ for(const inventory of [null,['x'.repeat(101)],[''],Array.from({length:101},()=> '卵')]){
+  const h=harness({preview:true,env:{DINNER_TEST_MODE:'true',DINNER_TEST_PROJECT_REF:'test'}});assert.equal((await h.handler(h.request({inventory}))).status,400);assert.equal(h.calls.length,0);
+ }
+ const h=harness();assert.equal((await h.handler(h.request({inventory:['卵']}))).status,400);
 });
