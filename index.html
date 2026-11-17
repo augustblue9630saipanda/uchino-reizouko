@@ -116,6 +116,20 @@ ul{list-style:none;padding:0}
 <p class="note">食材はクラウドに保存されます。</p>
 </div>
 
+<div class="card" aria-labelledby="mealHeading">
+<h2 id="mealHeading">🍳 冷蔵庫から献立提案</h2>
+<p>登録済みの食材を使う定番料理を、買い足しが少ない順に提案します。</p>
+<label for="mealFilter">提案する料理</label>
+<select id="mealFilter">
+<option value="all">買い足して作れる料理も表示</option>
+<option value="ready">主な食材がそろっている料理だけ</option>
+</select>
+<button id="refreshMeals" class="secondary wide" type="button">食材を再読み込みして提案を更新</button>
+<p id="mealSummary" role="status"></p>
+<div id="mealResults"></div>
+<p class="note">定番レシピとの食材名の照合による提案です。数量・鮮度・アレルギーは判定しません。調味料は別途確認してください。食材の自動追加・削除はしません。肉・魚・卵は十分に加熱してください。</p>
+</div>
+
 <div class="card">
 <h2>📷 写真から登録</h2>
 <p>食材の写真を選んで、AIに読み取ってもらおう！</p>
@@ -171,6 +185,7 @@ ul{list-style:none;padding:0}
 
 <script type="module">
 import {createClient} from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+import {suggestMeals} from './meal-suggestions.mjs';
 
 const url='https://moorgivgwmkbxyjvwuih.supabase.co';
 const key='sb_publishable_4cMwMgr654spcCXTKnsabw_a6AEu77x';
@@ -183,6 +198,47 @@ let inviteValue='';
 let photoURL=null;
 let selectedFile=null;
 let busy=false;
+let mealItems=null;
+
+function resetMeals(text='冷蔵庫を読み込み中です。'){
+ mealItems=null;
+ $('mealResults').replaceChildren();
+ $('mealSummary').textContent=text;
+}
+
+function renderMeals(){
+ if(mealItems===null)return;
+ const results=suggestMeals(mealItems.map(item=>item.name),$('mealFilter').value==='ready');
+ const container=$('mealResults');
+ container.replaceChildren();
+ $('mealSummary').textContent=!mealItems.length?'食材を登録すると献立を提案します。':results.length?results.length+'件の料理が見つかりました。':'条件に合う料理がありません。表示条件を変えるか、食材を追加してみてください。';
+ for(const recipe of results){
+  const card=document.createElement('article');
+  card.className='result';
+  const title=document.createElement('h3');
+  title.textContent=recipe.name;
+  card.append(title);
+  for(const text of [
+   '使える食材：'+recipe.available.join('、'),
+   recipe.missing.length?'買い足す食材：'+recipe.missing.join('、'):'主な食材はそろっています（数量は確認してください）。',
+   '調味料など（要確認）：'+recipe.seasonings.join('、'),
+   '作り方の目安：'+recipe.method
+  ]){
+   const p=document.createElement('p');
+   p.textContent=text;
+   card.append(p);
+  }
+  container.append(card);
+ }
+}
+$('mealFilter').onchange=renderMeals;
+$('refreshMeals').onclick=async()=>{
+ if(!householdId)return;
+ $('refreshMeals').disabled=true;
+ try{await loadItems();}
+ catch(e){message('読み込みエラー：'+e.message);}
+ finally{$('refreshMeals').disabled=false;}
+};
 
 function message(s){
  $('status').textContent=s;
@@ -422,11 +478,16 @@ async function refreshHouseholds(preferredId){
 
 async function loadItems(){
  if(!householdId)return;
+ const requestedHousehold=householdId;
+ resetMeals();
  const {data,error}=await db.from('ingredients')
   .select('id,name')
-  .eq('household_id',householdId)
+  .eq('household_id',requestedHousehold)
   .order('created_at',{ascending:false});
- if(error)throw error;
+ if(requestedHousehold!==householdId)return;
+ if(error){resetMeals('食材を取得できませんでした。再読み込みしてください。');throw error;}
+ mealItems=data||[];
+ renderMeals();
  const ul=$('items');
  ul.replaceChildren();
  if(!data.length){
@@ -465,6 +526,7 @@ async function loadItems(){
 async function initialize(user){
  activeUser=user;
  householdId=null;
+ resetMeals();
  show(user);
  clearPhoto();
  $('inviteCode').classList.add('hidden');
@@ -525,6 +587,7 @@ $('logout').onclick=async()=>{
 
 $('householdSelect').onchange=async()=>{
  householdId=$('householdSelect').value;
+ resetMeals();
  clearPhoto();
  localStorage.setItem(savedKey(),householdId);
  try{
@@ -624,6 +687,7 @@ try{
   if(event==='SIGNED_OUT'){
    activeUser=null;
    householdId=null;
+   resetMeals();
    clearPhoto();
    show(null);
    message('ログアウトしました');
@@ -635,3 +699,4 @@ try{
 </script>
 </body>
 </html>
+
