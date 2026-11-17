@@ -129,7 +129,7 @@ ul{list-style:none;padding:0}
 <p class="note">甘めの味・キノコが好き。野菜は細かく混ぜ込み、子ども用は薄味で取り分け、大人用は後から仕上げます。アレルギー・避ける食材の申告：現在なし。</p>
 <p class="note">ボタンを押すと、選択中の冷蔵庫の食材名と上記の家族構成・好みをGoogle Geminiへ送ります。写真・メールアドレスは送りません。食材の登録・削除は行いません。</p>
 <button id="generateDinner" class="wide" type="button" disabled>夕飯を3パターン提案してもらう</button>
-<p id="dinnerStatus" role="status" aria-live="polite">AI献立は現在準備中です。</p>
+<p id="dinnerStatus" role="status" aria-live="polite">AI献立のテスト環境はまだ接続されていません。</p>
 <div id="dinnerResults" aria-busy="false"></div>
 <p class="note">3案から1案を選んで作る想定です。分量は目安です。在庫の量・鮮度・食べる量は確認してください。AIの提案なので、手順と材料を調理前に確認してください。</p>
 <details><summary>子ども用と加熱の確認</summary>
@@ -251,7 +251,7 @@ const url='https://moorgivgwmkbxyjvwuih.supabase.co';
 const key='sb_publishable_4cMwMgr654spcCXTKnsabw_a6AEu77x';
 const db=createClient(url,key);
 const $=id=>document.getElementById(id);
-// Production integration: enable only after generate-dinner is deployed and verified.
+// Dinner generation uses the existing production Supabase project.
 // No Gemini credential belongs in this HTML.
 const dinnerEnabled=true;
 
@@ -347,7 +347,7 @@ $('generateDinner').onclick=async()=>{
   const {data,error}=await db.functions.invoke('generate-dinner',{body:{householdId:requestedHousehold}});
   if(version!==dinnerVersion||requestedHousehold!==householdId||!activeUser)return;
   if(error){
-   let detail='AI献立に接続できませんでした。少し待ってから試してください。';
+   let detail='AI献立に接続できませんでした。テスト環境の設定と通信状況を確認してください。';
    if(error.context){try{const body=await error.context.json();if(typeof body.error==='string')detail=body.error;}catch(_){}}
    throw new Error(detail);
   }
