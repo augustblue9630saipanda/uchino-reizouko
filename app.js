@@ -35,7 +35,7 @@ function navigate(page){
 document.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>navigate(b.dataset.go));
 document.querySelectorAll('.navBtn').forEach(b=>b.onclick=()=>navigate(b.dataset.page));
 $('settingsOpen').onclick=()=>openSheet('settingsDialog');
-$('todayLabel').textContent=new Intl.DateTimeFormat('en',{month:'long',day:'numeric',weekday:'short'}).format(new Date()).toUpperCase()+' / OUR DAILY NOTE';
+$('todayLabel').textContent=new Intl.DateTimeFormat('en',{month:'short',day:'numeric',weekday:'short'}).format(new Date()).toUpperCase()+' / DAILY NOTE';
 
 function categoryFor(item){
  if(categories.includes(item.category))return item.category;
@@ -54,7 +54,7 @@ function renderPantry(){
  const stock=mealItems||[],search=$('foodSearch').value.trim().toLowerCase();
  const filtered=stock.filter(i=>(categoryFilter==='すべて'||categoryFor(i)===categoryFilter)&&i.name.toLowerCase().includes(search));
  $('stockSummary').textContent=mealItems===null?'食材を読み込み中…':stock.length+'種類の食材が、出番を待っています。';
- $('homeStock').textContent=String(stock.length);$('items').replaceChildren();
+ $('homeStock').textContent=mealItems===null?'—':String(stock.length);$('items').replaceChildren();
  for(const item of filtered){
   const c=categoryFor(item),card=button('','food-card',()=>editFood(item));card.setAttribute('aria-label',item.name+'を編集');
   const text=el('span');text.append(el('span','food-name',item.name),el('span','food-category',c));
@@ -117,7 +117,7 @@ async function loadShopping(){
  const {data,error}=await db.from('shopping_items').select('id,name,quantity,unit,purchased,created_at').eq('household_id',target).order('created_at',{ascending:false});
  if(scope!==scopeVersion||request!==shoppingRequest)return;
  if(error){$('shoppingSummary').textContent='読み込めませんでした。「更新」でもう一度お試しください。';throw error;}
- shoppingItems=data||[];shoppingLoaded=true;renderShopping();$('shoppingSync').textContent='同じ世帯の家族と共有中 · '+new Date().toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'})+' 更新';
+ const next=data||[],changed=!shoppingLoaded||JSON.stringify(shoppingItems)!==JSON.stringify(next);shoppingItems=next;shoppingLoaded=true;if(changed)renderShopping();$('shoppingSync').textContent='同じ世帯の家族と共有中 · '+new Date().toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'})+' 更新';
 }
 function editShopping(item=null){$('shoppingId').value=item?.id||'';$('shoppingName').value=item?.name||'';$('shoppingQuantity').value=item?.quantity||'';$('shoppingUnit').value=item?.unit||'';$('shoppingDialogTitle').textContent=item?'買い物メモを編集':'買うものを追加';$('deleteShopping').classList.toggle('hidden',!item);openSheet('shoppingDialog');}
 $('addShopping').onclick=()=>editShopping();
