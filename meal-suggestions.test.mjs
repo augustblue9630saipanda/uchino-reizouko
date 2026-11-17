@@ -32,7 +32,7 @@ test('fewest missing ingredients first; ready filter excludes incomplete dishes'
 
 test('app integration refreshes, clears on failure/switch/logout, and never writes for suggestions',async()=>{
  const nodes=new Map();
- const element=()=>({textContent:'',value:'all',children:[],classList:{add(){},remove(){},toggle(){}},append(...xs){this.children.push(...xs);},replaceChildren(){this.children=[];},removeAttribute(){},querySelectorAll(){return[];}});
+ const element=()=>({textContent:'',value:'all',children:[],classList:{add(){},remove(){},toggle(){}},append(...xs){this.children.push(...xs);},replaceChildren(){this.children=[];},removeAttribute(){},setAttribute(){},querySelectorAll(){return[];}});
  const document={getElementById(id){if(!nodes.has(id))nodes.set(id,element());return nodes.get(id);},createElement:element,querySelectorAll(){return[];}};
  let response={data:[{id:'1',name:'卵'},{id:'2',name:'ねぎ'},{id:'3',name:'ご飯'}],error:null};
  let pending=null;
