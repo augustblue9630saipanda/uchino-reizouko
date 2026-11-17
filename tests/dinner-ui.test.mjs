@@ -51,9 +51,9 @@ test('error and malformed responses show retry and no partial results',async()=>
   assert.ok(nodes.get('generateDinner').textContent.includes('もう一度'));
  }
 });
-test('AI is disabled in the shipped page until a test project is configured',()=>{
+test('AI uses the authenticated server function with no browser Gemini key or local imports',()=>{
  const html=readFileSync(new URL('../index.html',import.meta.url),'utf8');
- assert.ok(html.includes('const dinnerEnabled=false;'));
+ assert.ok(html.includes("db.functions.invoke('generate-dinner'"));
  assert.doesNotMatch(html,/generativelanguage\.googleapis\.com|AIza[\w-]{20,}/);
  assert.doesNotMatch(html,/import\s+.*from\s+['"]\.\//);
 });

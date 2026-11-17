@@ -76,6 +76,12 @@ test('default model uses the verified 3.5 Flash-Lite when only Gemini key is set
  const call=h.calls.at(-1);assert.ok(call.url.endsWith('/gemini-3.5-flash-lite:generateContent'));
  const generation=JSON.parse(call.init.body).generationConfig;assert.equal(generation.responseMimeType,'application/json');assert.ok(generation.responseJsonSchema.properties.patterns);
 });
+test('dinner settings override Gemini defaults without altering existing photo settings',async()=>{
+ const h=harness({env:{GEMINI_MODEL:'existing-photo-model',DINNER_GEMINI_MODEL:'gemini-3.5-flash-lite',DINNER_GEMINI_API_KEY:'DINNER_ONLY_SECRET'}});
+ const r=await h.handler(h.request());assert.equal(r.status,200);
+ const last=h.calls.at(-1);assert.ok(last.url.includes('gemini-3.5-flash-lite'));assert.equal(last.init.headers['x-goog-api-key'],'DINNER_ONLY_SECRET');
+ assert.ok(!(await r.text()).includes('DINNER_ONLY_SECRET'));
+});
 test('preview authenticates but never reads or writes database; explicit staging configuration is mandatory',async()=>{
  const config={DINNER_TEST_MODE:'true',DINNER_TEST_PROJECT_REF:'test'};
  const h=harness({preview:true,env:config});const r=await h.handler(h.request({inventory:['卵','しめじ']}));

@@ -23,8 +23,9 @@ export function createDinnerHandler({env,fetchImpl=fetch,now=Date.now,preview=fa
    if(!request.headers.get('content-type')?.includes('application/json'))throw new PublicError(415,'JSON形式で送信してください。');
    const supabaseUrl=env('SUPABASE_URL');
    const anonKey=env('SUPABASE_ANON_KEY');
-   const geminiKey=env('GEMINI_API_KEY');
-   const model=env('GEMINI_MODEL')||'gemini-3.5-flash-lite';
+   const geminiKey=env('DINNER_GEMINI_API_KEY')||env('GEMINI_API_KEY');
+   // Dinner-specific settings never require changing existing photo-recognition settings.
+   const model=env('DINNER_GEMINI_MODEL')||(preview?env('GEMINI_MODEL'):null)||'gemini-3.5-flash-lite';
    if(!supabaseUrl||!anonKey||!geminiKey||!model||!/^[a-zA-Z0-9._-]+$/.test(model))throw new PublicError(503,'AI献立のサーバー設定がまだ完了していません。');
    if(preview){
     const testRef=env('DINNER_TEST_PROJECT_REF');
