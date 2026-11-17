@@ -64,7 +64,7 @@ test('provider failures, truncation, timeout and malformed recipes fail closed w
  }
 });
 test('contract rejects wrong role counts, missing quantities and duplicate patterns',()=>{
- for(const mutate of [d=>d.patterns.pop(),d=>d.patterns[0].dishes[1].role='主菜',d=>d.patterns[0].dishes[0].ingredients[0].quantity='',d=>d.patterns[1].title=d.patterns[0].title]){
+ for(const mutate of [d=>d.patterns.pop(),d=>d.patterns[0].dishes[1].role='主菜',d=>d.patterns[0].dishes[0].ingredients[0].quantity='',d=>d.patterns[1].title=d.patterns[0].title,d=>d.patterns[0].dishes[0].childPortion='小鉢半量']){
   const d=dinnerFixture();mutate(d);assert.throws(()=>validateDinner(d));
  }
  assert.equal(annotateStock(dinnerFixture(),['卵豆腐']).patterns[0].dishes[0].ingredients[0].availability,'買い足し候補');
