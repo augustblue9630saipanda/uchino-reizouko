@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#F7F4ED"><meta name="description" content="ふたりと、家族の毎日を。冷蔵庫・AI献立・買い物をひとつに。">
-<title>うちの暮らし</title><link rel="stylesheet" href="styles.css?v=20261118">
+<title>うちの暮らし</title><link rel="stylesheet" href="styles.css?v=20261118.2">
 </head>
 <body>
 <svg class="sprite" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><defs>
@@ -46,5 +46,5 @@
 <dialog id="recipeDialog" class="sheet recipe-sheet"><div class="sheet-header"><div><span class="eyebrow">RECIPE NOTE</span><h2 id="recipeTitle">献立の詳細</h2></div><button class="icon-button" data-close="recipeDialog" aria-label="レシピを閉じる"><svg><use href="#i-close"/></svg></button></div><div id="recipeDescription" class="muted"></div><div id="dishTabs" class="dish-tabs" role="tablist" aria-label="料理を選ぶ"></div><div id="recipeContent"></div></dialog>
 <dialog id="photoDialog" class="sheet"><div class="sheet-header"><div><span class="eyebrow">PHOTO TO PANTRY</span><h2>写真から登録</h2></div><button class="icon-button" data-close="photoDialog" aria-label="閉じる"><svg><use href="#i-close"/></svg></button></div><p class="muted">食材を撮って、まとめて冷蔵庫へ。</p><label class="photo-picker" for="photoInput"><svg><use href="#i-camera"/></svg><span>写真を選択・撮影</span><input id="photoInput" type="file" accept="image/*"></label><div id="photoPreviewBox" class="hidden"><img id="photoPreview" alt="選択した食材の写真"><p id="photoName" class="caption"></p><button id="clearPhoto" class="text-button">写真を取り消す</button></div><button id="recognize" class="primary full hidden" type="button">AIで食材を読み取る</button><div id="resultBox" class="hidden"><h3>読み取った食材</h3><p class="caption">名前を確認し、登録する食材にチェック。</p><div id="candidates"></div><button id="addCandidate" class="text-button" type="button">＋候補を追加</button><button id="saveCandidates" class="primary full" type="button">冷蔵庫にまとめて登録</button></div><p class="caption">読み取り時は写真をGoogle Geminiへ送信します。写真自体は保存しません。個人情報が写らない写真を選んでください。</p></dialog>
 <dialog id="settingsDialog" class="sheet"><div class="sheet-header"><div><span class="eyebrow">OUR FAMILY</span><h2>家族と設定</h2></div><button class="icon-button" data-close="settingsDialog" aria-label="閉じる"><svg><use href="#i-close"/></svg></button></div><label for="householdSelect">共有する冷蔵庫・買い物リスト</label><select id="householdSelect"></select><p class="caption">同じ世帯を選んだ家族と、食材・買い物メモを共有します。</p><section class="settings-section"><h3>家族を招待する</h3><p class="caption">招待コードは24時間有効・1回限りです。</p><button id="makeInvite" class="secondary">招待コードを発行</button><p id="inviteCode" class="code hidden"></p><button id="copyInvite" class="text-button hidden">コードをコピー</button><h3>招待された冷蔵庫に参加</h3><form id="joinForm"><input id="joinCode" placeholder="受け取った招待コード" autocomplete="off" autocapitalize="none" required><button class="secondary full">この冷蔵庫に参加する</button></form></section><p id="account" class="caption"></p><button id="logout" class="text-button full">ログアウト</button><p class="version">UCHINO KURASHI · 1.0</p></dialog>
-<script type="module" src="app.js?v=20261118"></script>
+<script type="module" src="app.js?v=20261118.2"></script>
 </body></html>

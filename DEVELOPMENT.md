@@ -14,10 +14,13 @@
 
 ## 変更の確認
 
+2026年11月18日：スマホ優先の4画面UIと共有買い物リストを追加しました。現在の画面は `index.html`、`styles.css`、`app.js` です。食材カテゴリ・編集と買い物リストのマイグレーションは本番適用済みです。詳細は [UIリニューアル](docs/UI-RENEWAL.md) を参照してください。
+
 ```sh
-node scripts/build-dinner-preview.mjs
-node scripts/prepare-production-integration.mjs
-node --test meal-suggestions.test.mjs tests/*.test.mjs
+node --check app.js
+node --test tests/*.test.mjs
+# 献立サーバーを変更したときだけ
+node scripts/build-dinner-server.mjs
 ```
 
 `dinner-test.html` とテスト環境関連の手順書は以前の開発履歴です。今後の利用・開発の入口は公開アプリです。既存コードを編集する際は、認証・夫婦共有・写真認識・食材保存を維持してください。

@@ -160,13 +160,16 @@ function resetDinner(text='冷蔵庫の食材から、今夜の献立を考え�
 }
 function updateDinnerAvailability(){
  $('generateDinner').disabled=dinnerBusy||!activeUser||!householdId||!mealItems?.length;
+ if(!dinnerBusy&&mealItems?.length&&!dinnerPlans.length&&$('dinnerStatus').textContent==='冷蔵庫を読み込み中です。')$('dinnerStatus').textContent='冷蔵庫の食材から、家族に合う夕飯を提案します。';
  if(!dinnerBusy&&!mealItems?.length)$('dinnerStatus').textContent=mealItems===null?'冷蔵庫を読み込み中です。':'冷蔵庫に食材を登録すると、献立を提案できます。';
 }
 function renderDinner(data){
  if(!Array.isArray(data?.patterns)||data.patterns.length!==3||data.patterns.some(p=>!Array.isArray(p.dishes)||p.dishes.length!==3))throw Error('献立の形式が正しくありません。再生成してください。');
  dinnerPlans=data.patterns;const fragment=document.createDocumentFragment();
  for(const [index,plan] of dinnerPlans.entries()){
-  const card=el('article','plan-card'),top=el('div','plan-top');top.append(el('span','plan-no','0'+(index+1)),el('small','','DINNER PLAN'));
+  const names=plan.title+' '+plan.dishes.map(d=>d.name).join(' ');
+  const genre=/中華|麻婆|チャーハン|オイスター|餃子|酢豚/.test(names)?'中華風':/洋風|パスタ|グラタン|ミネストローネ|クリーム|ポトフ|ソテー|ハンバーグ/.test(names)?'洋風':/和風|和の|味噌|みそ|照り|煮物|おひたし|卵とじ/.test(names)?'和風':'家庭料理';
+  const card=el('article','plan-card'),top=el('div','plan-top');top.append(el('span','plan-no','0'+(index+1)),el('small','',genre+' · DINNER PLAN'));
   const body=el('div','plan-body');body.append(el('h2','',plan.title));
   const list=el('ul','plan-menu');for(const dish of plan.dishes){const li=el('li');li.append(el('span','course-label',dish.role),el('span','',dish.name));list.append(li);}body.append(list);
   const bottom=el('div','plan-bottom');bottom.append(el('small','',plan.missingIngredients?.length?'買い足し '+new Set(plan.missingIngredients.map(i=>i.name)).size+'種類':'主な食材は登録済み'));
@@ -195,7 +198,7 @@ $('generateDinner').onclick=async()=>{
  try{
   const {data,error}=await db.functions.invoke('generate-dinner',{body:{householdId:target}});
   if(version!==dinnerVersion||target!==householdId||!activeUser)return;
-  if(error){let detail='献立に接続できませんでした。少し待って再度お試しください。';if(error.context){try{const b=await error.context.json();if(typeof b.error==='string')detail=b.error;}catch{}}throw Error(detail);}
+  if(error){let detail='献立に接続できませんでした。少し待って再度お試しください。';if(error.context){try{const b=await error.context.json();if(typeof b.error==='string')detail=b.error;}catch{}}if(/Gemini HTTP 50[234]/.test(detail))detail='AIが一時的に混み合っています。1分ほど待って再度お試しください。';throw Error(detail);}
   if(data?.error)throw Error(data.error);if(data?.householdId!==target)throw Error('冷蔵庫が切り替わりました。再生成してください。');
   renderDinner(data);$('dinnerStatus').textContent='3つの食卓ができました。気になる献立を選んでください。';$('generateDinner').textContent='別の3つの献立を提案してもらう';
  }catch(e){if(version===dinnerVersion){$('dinnerResults').replaceChildren();$('dinnerStatus').textContent=e.message;$('generateDinner').textContent='もう一度、献立を提案してもらう';$('dinnerIntro').classList.remove('hidden');}}
