@@ -4,6 +4,13 @@ import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 import {suggestMeals} from './meal-suggestions.mjs';
 
+test('direct-file entry has no local module imports and matches tested recipes',()=>{
+ const html=readFileSync(new URL('./index.html',import.meta.url),'utf8');
+ assert.doesNotMatch(html,/import\s+.*from\s+['"]\.\//);
+ const source=readFileSync(new URL('./meal-suggestions.mjs',import.meta.url),'utf8').replace(/^export /gm,'').trim().replace(/\r\n/g,'\n');
+ assert.ok(html.replace(/\r\n/g,'\n').includes(source));
+});
+
 test('empty stock and unrelated names do not suggest meals',()=>{
  assert.deepEqual(suggestMeals([]),[]);
  assert.deepEqual(suggestMeals(['卵豆腐','牛乳']),[]);
