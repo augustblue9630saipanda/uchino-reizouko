@@ -3,7 +3,7 @@ const url='https://moorgivgwmkbxyjvwuih.supabase.co/functions/v1/generate-dinner
 const apikey='sb_publishable_4cMwMgr654spcCXTKnsabw_a6AEu77x';
 const page=await fetch('https://augustblue9630saipanda.github.io/uchino-reizouko/',{signal:AbortSignal.timeout(15000)});
 const html=await page.text();
-const enabled=html.includes('const dinnerEnabled=true;')&&html.includes('家族のAI夕飯プラン');
+const enabled=html.includes('id="page-dinner"')&&html.includes('app.js')&&!html.includes('🍳 冷蔵庫から献立提案');
 console.log(JSON.stringify({case:'published-app',status:page.status,dinnerEnabled:enabled}));
 if(!page.ok||!enabled)process.exitCode=1;
 for(const token of ['', 'Bearer deliberately-invalid-login']){
