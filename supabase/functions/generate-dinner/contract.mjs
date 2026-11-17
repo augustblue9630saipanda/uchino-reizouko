@@ -16,6 +16,17 @@ export const dinnerSchema=object({patterns:list(object({
  }),3,3)
 }),3,3)});
 
+// Keep provider decoding small: nested length/count constraints can exceed
+// Gemini's schema complexity budget. Full constraints remain in validateDinner.
+function providerShape(schema){
+ const result={type:schema.type};
+ if(schema.properties){result.properties=Object.fromEntries(Object.entries(schema.properties).map(([key,value])=>[key,providerShape(value)]));result.required=schema.required;result.additionalProperties=false;}
+ if(schema.items)result.items=providerShape(schema.items);
+ if(schema.enum)result.enum=schema.enum;
+ return result;
+}
+export const generationSchema=providerShape(dinnerSchema);
+
 export const systemPrompt=`あなたは家庭料理の献立作成アシスタントです。日本語の具体的なレシピをJSONで返してください。
 大人2人と2歳9か月の子ども1人の夕飯を、異なる組み合わせで必ず3パターン作成します。
 各パターンは主菜・副菜・汁物の各1品、合計3品です。各パターンは別の日の選択肢で、9品を一度に作る意味ではありません。

@@ -1,4 +1,4 @@
-import {dinnerSchema,systemPrompt,validateDinner,annotateStock} from './contract.mjs';
+import {generationSchema,systemPrompt,validateDinner,annotateStock} from './contract.mjs';
 
 class PublicError extends Error{
  constructor(status,message){super(message);this.status=status;}
@@ -68,7 +68,7 @@ export function createDinnerHandler({env,fetchImpl=fetch,now=Date.now,preview=fa
    attempts.set(user.id,now());
    const response=await fetchImpl('https://generativelanguage.googleapis.com/v1beta/models/'+model+':generateContent',{
     method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':geminiKey},signal:AbortSignal.timeout(75000),
-    body:JSON.stringify({systemInstruction:{parts:[{text:systemPrompt}]},contents:[{role:'user',parts:[{text:JSON.stringify({inventory,variation:crypto.randomUUID()})}]}],generationConfig:{responseMimeType:'application/json',responseJsonSchema:dinnerSchema,maxOutputTokens:24576,temperature:0.9}})
+    body:JSON.stringify({systemInstruction:{parts:[{text:systemPrompt}]},contents:[{role:'user',parts:[{text:JSON.stringify({inventory,variation:crypto.randomUUID()})}]}],generationConfig:{responseMimeType:'application/json',responseJsonSchema:generationSchema,maxOutputTokens:24576,temperature:0.9}})
    });
    if(response.status===429)throw new PublicError(429,'AIが混み合っているか利用上限に達しました。時間をおいて試してください。');
    if(!response.ok){

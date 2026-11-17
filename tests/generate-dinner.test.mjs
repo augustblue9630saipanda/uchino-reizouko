@@ -1,10 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createDinnerHandler} from '../supabase/functions/generate-dinner/handler.mjs';
-import {validateDinner,annotateStock} from '../supabase/functions/generate-dinner/contract.mjs';
+import {validateDinner,annotateStock,generationSchema} from '../supabase/functions/generate-dinner/contract.mjs';
 import {dinnerFixture} from './dinner-fixture.mjs';
 const householdId='11111111-1111-4111-8111-111111111111';
 const userId='22222222-2222-4222-8222-222222222222';
+test('provider schema avoids nested length constraints while server still validates exactly three menus',()=>{
+ assert.doesNotMatch(JSON.stringify(generationSchema),/maxLength|minLength|maxItems|minItems|minimum|maximum/);
+ const invalid=dinnerFixture();invalid.patterns.pop();assert.throws(()=>validateDinner(invalid));
+});
 function harness(options={}){
  const calls=[];
  const config={SUPABASE_URL:'https://test.supabase.co',SUPABASE_ANON_KEY:'public-test-key',GEMINI_API_KEY:'SERVER_ONLY_SECRET',GEMINI_MODEL:'gemini-3.5-flash-lite',DINNER_ALLOWED_ORIGINS:'http://localhost:8000',...options.env};
