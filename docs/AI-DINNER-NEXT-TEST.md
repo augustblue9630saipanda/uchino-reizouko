@@ -2,6 +2,10 @@
 
 ## できていること
 
+- テスト接続先 `https://cvkaimuqcsoxrmfkhvfr.supabase.co` の認証設定は、公開キーを使った読み取りでHTTP 200を確認しました。
+- `generate-dinner-preview` はまだ未配置でHTTP 404でした。既存の `test-gemini` は変更していません。
+- `dinner-test.html` には確認済みのテストURLと公開キーを入力済みです。ログイン用パスワードやGeminiキーは含みません。
+
 - 利用者の報告：テスト用SupabaseにGEMINI_API_KEYを登録済み。`test-gemini` から `gemini-3.5-flash-lite` がHTTP 200でJSONを返すことを確認済み。
 - 献立サーバーの既定モデルも `gemini-3.5-flash-lite` に変更しました。`GEMINI_MODEL` を設定すれば切り替えられます。
 - 本番アプリとは別の `dinner-test.html` と、DBを読み書きしない `generate-dinner-preview` を追加しました。主菜・副菜・汁物の3案、家族3人分の分量、取り分け手順、買い足し食材まで確認できます。
@@ -18,7 +22,7 @@
 | GEMINI_API_KEY | 登録済みのテスト用キー |
 | GEMINI_MODEL | `gemini-3.5-flash-lite`（省略時も同じモデル） |
 | DINNER_TEST_MODE | `true` |
-| DINNER_TEST_PROJECT_REF | テストURLの `https://` と `.supabase.co` の間のIDだけ |
+| DINNER_TEST_PROJECT_REF | `cvkaimuqcsoxrmfkhvfr` |
 | DINNER_ALLOWED_ORIGINS | ファイルを直接開くなら `null`。ローカルサーバーなら `http://localhost:8000`。両方許可する場合は `null,http://localhost:8000` |
 
 `null` はローカルファイルのOriginです。他のローカル文書も同じOriginになるためテスト限定で使います。どのOriginでも、有効なテスト用アカウントのJWTが必要です。
