@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>家族の夕飯｜テスト専用</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f5f8f3;color:#294c37;font-family:system-ui,sans-serif;line-height:1.7}main{max-width:760px;margin:auto;padding:20px}h1{font-size:25px}h2{font-size:21px}.card,.result{padding:20px;background:#fff;border-radius:16px;margin:18px 0}.note{font-size:13px;color:#536b5a}label{display:block;margin-top:12px}input,textarea,button{font:inherit;border-radius:8px;padding:12px;width:100%}input,textarea{border:1px solid #bcd1c2;background:#fff;color:#294c37}button{border:0;background:#287c4b;color:white;margin-top:12px;cursor:pointer}button:disabled{opacity:.5;cursor:default}.secondary{background:#e6f1e8;color:#294c37}.hidden{display:none!important}.dinnerDish{border-top:1px solid #cbdccb;padding-top:10px;margin-top:18px}.dinnerPattern summary{cursor:pointer;font-size:18px;font-weight:bold}.childServing{background:#fff4d8;padding:12px;border-radius:10px}p,li{overflow-wrap:anywhere}#status{white-space:pre-wrap}.badge{background:#fff4d8;padding:6px 12px;border-radius:20px;display:inline-block}
+</style>
+</head>
+<body><main>
+<span class="badge">テスト専用・冷蔵庫データを変更しません</span>
+<h1>🍳 家族の夕飯を3パターン</h1>
+<p>大人2人＋2歳9か月の子ども1人。主菜・副菜・汁物を各プランにまとめます。</p>
+<section class="card">
+<h2>1. テスト環境に接続</h2>
+<p class="note">テスト用SupabaseのURLと公開キーを入力します。Geminiキー・service_roleキーは入力しないでください。本番の接続先は使えません。</p>
+<form id="connectForm">
+<label for="projectUrl">テスト用SupabaseのURL</label><input id="projectUrl" type="url" value="https://cvkaimuqcsoxrmfkhvfr.supabase.co" required>
+<label for="publicKey">公開キー（publishable key / anon key）</label><input id="publicKey" type="text" value="sb_publishable_ilbJPnLxOS3O0zBynndI3g_r29hxBrb" autocomplete="off" spellcheck="false" required>
+<label for="email">テスト用アカウントのメールアドレス</label><input id="email" type="email" autocomplete="username" required>
+<label for="password">テスト用アカウントのパスワード</label><input id="password" type="password" autocomplete="current-password" required>
+<button id="connect">テスト用アカウントでログイン</button>
+</form>
+<p id="connected" class="hidden"></p>
+<button id="disconnect" class="secondary hidden" type="button">テスト環境からログアウト</button>
+</section>
+<section id="generator" class="card hidden">
+<h2>2. 架空の食材で献立を作る</h2>
+<p class="note">この画面は冷蔵庫の登録データを読み書きしません。入力した食材名と家族構成・好みを、テスト用サーバー経由でGoogle Geminiへ送信します。メール・パスワード・写真はGeminiへ送りません。</p>
+<label for="inventory">食材名（1行に1つ、100件まで）</label>
+<textarea id="inventory" rows="8" maxlength="11000">鶏むね肉
+卵
+しめじ
+玉ねぎ
+にんじん
+豆腐
+キャベツ</textarea>
+<p class="note">甘め・キノコが好き。野菜は細かく混ぜ込み、子ども用は薄味で取り分けます。大人は後から仕上げます。アレルギー等の申告は現在なしです。</p>
+<button id="generate" type="button">夕飯を3パターン生成する</button>
+<p class="note">生成には1分ほどかかる場合があります。再生成は1分おいてください。AIの手順・分量・加熱具合を調理前に確認してください。</p>
+</section>
+<section class="card"><p id="status" role="status" aria-live="polite">テスト環境の接続情報を入力してください。</p></section>
+<div id="dinnerResults" aria-busy="false"></div>
+<p class="note">3案から1案を選ぶ想定です。在庫量・鮮度は判定しません。子どもの噛む力に合わせて小さくやわらかくし、十分に加熱してから薄味で取り分け、冷ましてください。食事中は見守ってください。<a href="https://www.jpeds.or.jp/general/50123.html" target="_blank" rel="noopener">窒息予防の参考</a></p>
+</main>
+<script type="module">
+const $=id=>document.getElementById(id);
+let client=null,project='',publicKey='',version=0,busy=false;
+let createClient;
+function status(text){$('status').textContent=text;}
+function invalidate(){version++;busy=false;$('dinnerResults').replaceChildren();$('dinnerResults').setAttribute('aria-busy','false');$('generate').disabled=false;}
+function testConfig(rawUrl,key){
+ const url=new URL(rawUrl.trim());
+ if(url.protocol!=='https:'||!/^[-a-z0-9]+\.supabase\.co$/.test(url.hostname)||url.username||url.password||url.search||url.hash||url.port||!['','/'].includes(url.pathname))throw new Error('テスト用Supabaseの https://…supabase.co 形式のURLを入力してください。');
+ if(url.hostname==='moorgivgwmkbxyjvwuih.supabase.co')throw new Error('既存アプリの接続先です。テスト用プロジェクトを使ってください。');
+ if(!key.startsWith('sb_publishable_')){
+  try{const role=JSON.parse(atob(key.split('.')[1].replace(/-/g,'+').replace(/_/g,'/'))).role;if(role!=='anon')throw Error();}
+  catch{throw new Error('公開キーだけを入力してください。Geminiキーや管理用キーは使えません。');}
+ }
+ return url.origin;
+}
+function dinnerText(parent,tag,text,className=''){
+ const node=document.createElement(tag);
+ node.textContent=text;
+ if(className)node.className=className;
+ parent.append(node);
+ return node;
+}
+
+function renderDinner(data){
+ if(!Array.isArray(data?.patterns)||data.patterns.length!==3||data.patterns.some(p=>!Array.isArray(p.dishes)||p.dishes.length!==3))throw new Error('献立の形式が正しくありません。再生成してください。');
+ // Build off-screen; malformed responses never leave a partial recipe visible.
+ const fragment=document.createDocumentFragment();
+ for(const [index,pattern] of data.patterns.entries()){
+  const card=document.createElement('details');card.className='result dinnerPattern';card.open=index===0;
+  dinnerText(card,'summary','プラン'+(index+1)+'：'+pattern.title);
+  dinnerText(card,'p',pattern.description);
+  const missing=dinnerText(card,'section','');
+  dinnerText(missing,'h3','🛒 このプランで買い足す食材');
+  if(!pattern.missingIngredients.length)dinnerText(missing,'p','食材名の照合では買い足し候補はありません。在庫量は確認してください。');
+  const shopping=document.createElement('ul');missing.append(shopping);
+  for(const item of pattern.missingIngredients)dinnerText(shopping,'li',item.name+'：'+item.quantity+'（'+item.dish+'）');
+  if(pattern.pantryToCheck.length){
+   dinnerText(missing,'h4','家にあるか確認する調味料');
+   const pantry=document.createElement('ul');missing.append(pantry);
+   for(const item of pattern.pantryToCheck)dinnerText(pantry,'li',item.name+'：'+item.quantity+'（'+item.dish+'）');
+  }
+  for(const dish of pattern.dishes){
+   const section=document.createElement('section');section.className='dinnerDish';card.append(section);
+   dinnerText(section,'h3',dish.role+'｜'+dish.name);
+   dinnerText(section,'p','盛り付け目安：大人1人 '+dish.adultPortion+'／子ども1人 '+dish.childPortion);
+   dinnerText(section,'h4','材料（大人2人＋子ども1人の合計）');
+   const ingredients=document.createElement('ul');section.append(ingredients);
+   for(const item of dish.ingredients)dinnerText(ingredients,'li',item.name+'：'+item.quantity+' — '+item.availability);
+   dinnerText(section,'h4','下ごしらえ');
+   const prep=document.createElement('ul');section.append(prep);
+   for(const text of dish.preparation)dinnerText(prep,'li',text);
+   dinnerText(section,'h4','作り方');
+   const steps=document.createElement('ol');section.append(steps);
+   for(const [stepIndex,step] of dish.steps.entries()){
+    const li=dinnerText(steps,'li',step.instruction);
+    dinnerText(li,'p','火加減：'+step.heat+'／時間：'+step.time,'note');
+    dinnerText(li,'p','確認：'+step.doneness,'note');
+    if(dish.childServing.afterStep===stepIndex+1)dinnerText(li,'p','👶 ここで子ども用を取り分け：'+dish.childServing.instruction,'childServing');
+   }
+   dinnerText(section,'h4','大人用の仕上げ');
+   dinnerText(section,'p',dish.adultFinish);
+   dinnerText(section,'h4','子どもが食べる前の確認');
+   dinnerText(section,'p',dish.childSafety);
+  }
+  fragment.append(card);
+ }
+ $('dinnerResults').replaceChildren(fragment);
+}
+
+
+$('connectForm').onsubmit=async e=>{
+ e.preventDefault();$('connect').disabled=true;
+ try{
+  const enteredKey=$('publicKey').value.trim();
+  const enteredUrl=testConfig($('projectUrl').value,enteredKey);
+  status('テスト環境にログイン中…');
+  if(!createClient)({createClient}=await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm'));
+  const candidate=createClient(enteredUrl,enteredKey,{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false}});
+  const {error}=await candidate.auth.signInWithPassword({email:$('email').value.trim(),password:$('password').value});
+  if(error)throw new Error('ログインできませんでした。テスト用アカウントと接続先を確認してください。');
+  client=candidate;project=enteredUrl;publicKey=enteredKey;invalidate();
+  $('password').value='';$('connectForm').classList.add('hidden');$('connected').textContent='接続中：'+project;
+  $('connected').classList.remove('hidden');$('disconnect').classList.remove('hidden');$('generator').classList.remove('hidden');
+  status('テスト環境に接続しました。架空の食材で生成を試せます。');
+ }catch(e){status(e.message||'接続できませんでした。');}
+ finally{$('connect').disabled=false;}
+};
+$('inventory').oninput=()=>{invalidate();status('食材が変わりました。生成ボタンで新しい献立を作成してください。');};
+$('disconnect').onclick=async()=>{
+ const previous=client;client=null;invalidate();project='';publicKey='';
+ $('connectForm').classList.remove('hidden');$('connected').classList.add('hidden');$('disconnect').classList.add('hidden');$('generator').classList.add('hidden');
+ status('ログアウトしました。');
+ if(previous)await previous.auth.signOut({scope:'local'});
+};
+$('generate').onclick=async()=>{
+ if(!client||busy)return;
+ const inventory=[...new Set($('inventory').value.split(/\r?\n/).map(n=>n.trim()).filter(Boolean))];
+ if(!inventory.length||inventory.length>100||inventory.some(n=>n.length>100)){status('食材名を1〜100件、1件100文字以内で入力してください。');return;}
+ const current=++version;busy=true;$('generate').disabled=true;$('dinnerResults').replaceChildren();$('dinnerResults').setAttribute('aria-busy','true');
+ const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),100000);
+ status('Geminiが夕飯3パターンを作成中です…');
+ try{
+  const {data,error}=await client.auth.refreshSession();
+  if(current!==version)return;
+  if(error||!data.session)throw new Error('ログインの期限が切れました。ログインし直してください。');
+  const response=await fetch(project+'/functions/v1/generate-dinner-preview',{method:'POST',headers:{'Content-Type':'application/json',apikey:publicKey,Authorization:'Bearer '+data.session.access_token},body:JSON.stringify({inventory}),signal:controller.signal});
+  if(current!==version)return;
+  let result;try{result=await response.json();}catch{throw new Error('応答を読み取れませんでした。テスト用関数の配置を確認してください。');}
+  if(current!==version)return;
+  if(!response.ok)throw new Error(result.error||'テスト用関数に接続できませんでした（HTTP '+response.status+'）。');
+  if(result.mode!=='preview'||result.householdId!==null)throw new Error('テスト用プレビューの応答ではありません。接続先を確認してください。');
+  renderDinner(result);
+  status('3パターンを生成しました。モデル：'+result.model+'。分量・取り分け・加熱の手順を確認してください。');
+ }catch(e){if(current===version){$('dinnerResults').replaceChildren();status(e.name==='AbortError'?'応答に時間がかかっています。1分ほどおいて再度お試しください。':e.message||'通信できませんでした。許可元の設定と関数の配置を確認してください。');}}
+ finally{clearTimeout(timer);if(current===version){busy=false;$('generate').disabled=false;$('dinnerResults').setAttribute('aria-busy','false');}}
+};
+window.addEventListener('unhandledrejection',()=>status('通信を完了できませんでした。接続設定を確認してください。'));
+</script></body></html>
