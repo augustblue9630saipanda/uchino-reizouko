@@ -15,7 +15,7 @@ function harness(options={}){
   if(url.includes('/rest/v1/households'))return Response.json(options.forbidden?[]:[{id:householdId}]);
   if(url.includes('/rest/v1/ingredients'))return Response.json(options.rows||[{name:'卵'},{name:'玉ねぎ'}]);
   if(options.throwError)throw options.throwError;
-  return Response.json({candidates:[{finishReason:options.finishReason||'STOP',content:{parts:[{text:JSON.stringify(options.output||dinnerFixture())}]}}]},{status:options.geminiStatus||200});
+  return Response.json(options.providerError?{error:{message:options.providerError}}:{candidates:[{finishReason:options.finishReason||'STOP',content:{parts:[{text:JSON.stringify(options.output||dinnerFixture())}]}}]},{status:options.geminiStatus||200});
  };
  const handler=createDinnerHandler({env:k=>config[k],fetchImpl,now:()=>clock,preview:options.preview||false});
  const request=(body={householdId},headers={})=>new Request('https://test.supabase.co/functions/v1/generate-dinner',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer user-jwt',Origin:'http://localhost:8000',...headers},body:JSON.stringify(body)});
@@ -68,6 +68,12 @@ test('contract rejects wrong role counts, missing quantities and duplicate patte
 test('CORS preflight works only for configured origins',async()=>{
  const h=harness();const r=await h.handler(new Request('https://test.example',{method:'OPTIONS',headers:{Origin:'http://localhost:8000'}}));
  assert.equal(r.status,204);assert.equal(r.headers.get('Access-Control-Allow-Origin'),'http://localhost:8000');assert.equal(h.calls.length,0);
+});
+test('provider diagnostic identifies configuration failures without returning raw provider data',async()=>{
+ for(const [providerError,expected] of [['JSON schema has too many states SERVER_ONLY_SECRET','応答形式'],['API key not valid SERVER_ONLY_SECRET','APIキー']]){
+  const h=harness({geminiStatus:400,providerError});const r=await h.handler(h.request());const data=await r.json();
+  assert.equal(r.status,502);assert.ok(data.error.includes(expected));assert.ok(!data.error.includes('SERVER_ONLY_SECRET'));
+ }
 });
 
 test('default model uses the verified 3.5 Flash-Lite when only Gemini key is set',async()=>{

@@ -71,7 +71,12 @@ export function createDinnerHandler({env,fetchImpl=fetch,now=Date.now,preview=fa
     body:JSON.stringify({systemInstruction:{parts:[{text:systemPrompt}]},contents:[{role:'user',parts:[{text:JSON.stringify({inventory,variation:crypto.randomUUID()})}]}],generationConfig:{responseMimeType:'application/json',responseJsonSchema:dinnerSchema,maxOutputTokens:24576,temperature:0.9}})
    });
    if(response.status===429)throw new PublicError(429,'AIが混み合っているか利用上限に達しました。時間をおいて試してください。');
-   if(!response.ok)throw new PublicError(502,'AIから献立を取得できませんでした。時間をおいて試してください。');
+   if(!response.ok){
+    let detail='';try{detail=String((await response.json())?.error?.message||'');}catch{}
+    // Classify without exposing Google's message, inventory or the credential.
+    const reason=/api.?key|API_KEY/i.test(detail)?'APIキー設定':/schema|JSON|constraint/i.test(detail)?'応答形式の設定':response.status===404||/model.*not (found|supported|available)/i.test(detail)?'モデルの利用設定':response.status===403?'利用権限の設定':'接続設定';
+    throw new PublicError(502,'AIの'+reason+'を確認してください（Gemini HTTP '+response.status+'）。');
+   }
    const payload=await response.json();
    const candidate=payload.candidates?.[0];
    if(candidate?.finishReason!=='STOP')throw new PublicError(502,'献立を最後まで作成できませんでした。時間をおいて再生成してください。');
