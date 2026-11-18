@@ -66,9 +66,15 @@ export function createDinnerHandler({env,fetchImpl=fetch,now=Date.now,preview=fa
    if(attempts.has(user.id))throw new PublicError(429,'生成後は1分ほど待ってから、もう一度試してください。');
    if(attempts.size>=1000)throw new PublicError(429,'ただいま混み合っています。少し待ってください。');
    attempts.set(user.id,now());
+   const contents=[{role:'user',parts:[{text:JSON.stringify({inventory,variation:crypto.randomUUID()})}]}];
+   const generationSignal=AbortSignal.timeout(75000);
+   let dinner;
+   // At most one format repair, sharing the original total timeout. HTTP failures,
+   // quotas and incomplete generations are never retried automatically.
+   for(let attempt=0;attempt<2;attempt++){
    const response=await fetchImpl('https://generativelanguage.googleapis.com/v1beta/models/'+model+':generateContent',{
-    method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':geminiKey},signal:AbortSignal.timeout(75000),
-    body:JSON.stringify({systemInstruction:{parts:[{text:systemPrompt}]},contents:[{role:'user',parts:[{text:JSON.stringify({inventory,variation:crypto.randomUUID()})}]}],generationConfig:{responseMimeType:'application/json',responseJsonSchema:generationSchema,maxOutputTokens:24576,temperature:0.9}})
+    method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':geminiKey},signal:generationSignal,
+    body:JSON.stringify({systemInstruction:{parts:[{text:systemPrompt}]},contents,generationConfig:{responseMimeType:'application/json',responseJsonSchema:generationSchema,maxOutputTokens:24576,temperature:attempt?0.3:0.9}})
    });
    if(response.status===429)throw new PublicError(429,'AIが混み合っているか利用上限に達しました。時間をおいて試してください。');
    if(!response.ok){
@@ -80,12 +86,23 @@ export function createDinnerHandler({env,fetchImpl=fetch,now=Date.now,preview=fa
    const payload=await response.json();
    const candidate=payload.candidates?.[0];
    if(candidate?.finishReason!=='STOP')throw new PublicError(502,'献立を最後まで作成できませんでした。時間をおいて再生成してください。');
-   let dinner;
+   let draft='';
    try{
-    const text=candidate.content.parts.filter(p=>!p.thought&&typeof p.text==='string').map(p=>p.text).join('');
-    if(text.length>180000)throw Error('large');
-    dinner=validateDinner(JSON.parse(text));
-   }catch{throw new PublicError(502,'献立の形式を確認できませんでした。再生成してください。');}
+    draft=candidate.content.parts.filter(p=>!p.thought&&typeof p.text==='string').map(p=>p.text).join('');
+    if(draft.length>180000)throw Error('large');
+    dinner=validateDinner(JSON.parse(draft));
+    break;
+   }catch(e){
+    // Log only schema paths/codes, never recipes, inventory, user ids or secrets.
+    const issue=e?.issue||{path:'$',code:e instanceof SyntaxError?'json':'response'};
+    console.warn(JSON.stringify({event:'dinner_validation_failed',version:'20261118-format2',attempt:attempt+1,issue}));
+    if(attempt===0&&draft&&draft.length<=180000){
+     contents.push({role:'model',parts:[{text:draft}]},{role:'user',parts:[{text:'直前のJSONがサーバー検証に失敗しました。検証箇所='+issue.path+'、理由='+issue.code+'。最初の指示と各項目のdescriptionを確認し、この不備を含む形式を修正してください。献立の具体性、材料と分量、火加減・時間・加熱確認、十分な加熱後の子ども取り分けと大人の仕上げを省略しないでください。必ず異なる3パターン、各3品（主菜・副菜・汁物）、各料理のstepsは2〜15項目、afterStepはstepsの範囲内、空文字・空配列は禁止です。修正済みの全体JSONだけを返してください。'}]});
+     continue;
+    }
+    throw new PublicError(502,'献立の形式を確認できませんでした。再生成してください。');
+   }
+   }
    const annotated=annotateStock(dinner,inventory);
    if(annotated.patterns.some(p=>!p.dishes.some(d=>d.ingredients.some(i=>i.availability==='登録あり（量を確認）'))))throw new PublicError(502,'冷蔵庫の食材を使う献立になりませんでした。再生成してください。');
    return reply(200,{...annotated,inventory,householdId:preview?null:body.householdId,mode:preview?'preview':'registered',model,generatedAt:new Date(now()).toISOString()});

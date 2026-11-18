@@ -6,20 +6,33 @@ import {dinnerFixture} from './dinner-fixture.mjs';
 const householdId='11111111-1111-4111-8111-111111111111';
 const userId='22222222-2222-4222-8222-222222222222';
 test('provider schema avoids nested length constraints while server still validates exactly three menus',()=>{
- assert.doesNotMatch(JSON.stringify(generationSchema),/maxLength|minLength|maxItems|minItems|minimum|maximum/);
+ assert.doesNotMatch(JSON.stringify(generationSchema),/"(?:maxLength|minLength|maxItems|minItems|minimum|maximum)":/);
+ assert.match(generationSchema.properties.patterns.description,/3〜3/);
+ assert.match(generationSchema.properties.patterns.items.properties.dishes.items.properties.steps.description,/2〜15/);
  const invalid=dinnerFixture();invalid.patterns.pop();assert.throws(()=>validateDinner(invalid));
+});
+
+test('equivalent gram/millilitre glyphs are accepted without losing serving quantities',()=>{
+ for(const portion of ['約８０ｍＬ','約80ML','約80㎖','約８０ｇ','約80G']){
+  const d=dinnerFixture();d.patterns[0].dishes[0].childPortion=portion;
+  assert.equal(validateDinner(d).patterns[0].dishes[0].childPortion,portion);
+ }
+ const d=dinnerFixture();d.patterns[0].dishes[1].steps.pop();
+ assert.throws(()=>validateDinner(d),e=>e.issue.path==='$.patterns[0].dishes[1].steps'&&e.issue.code==='array_count');
 });
 function harness(options={}){
  const calls=[];
  const config={SUPABASE_URL:'https://test.supabase.co',SUPABASE_ANON_KEY:'public-test-key',GEMINI_API_KEY:'SERVER_ONLY_SECRET',GEMINI_MODEL:'gemini-3.5-flash-lite',DINNER_ALLOWED_ORIGINS:'http://localhost:8000',...options.env};
  let clock=100000;
+ let generations=0;
  const fetchImpl=async(url,init)=>{
   calls.push({url,init});
   if(url.endsWith('/auth/v1/user'))return Response.json({id:userId},{status:options.authStatus||200});
   if(url.includes('/rest/v1/households'))return Response.json(options.forbidden?[]:[{id:householdId}]);
   if(url.includes('/rest/v1/ingredients'))return Response.json(options.rows||[{name:'卵'},{name:'玉ねぎ'}]);
   if(options.throwError)throw options.throwError;
-  return Response.json(options.providerError?{error:{message:options.providerError}}:{candidates:[{finishReason:options.finishReason||'STOP',content:{parts:[{text:JSON.stringify(options.output||dinnerFixture())}]}}]},{status:options.geminiStatus||200});
+  const output=options.outputs?.[generations++]||options.output||dinnerFixture();
+  return Response.json(options.providerError?{error:{message:options.providerError}}:{candidates:[{finishReason:options.finishReason||'STOP',content:{parts:[{text:JSON.stringify(output)}]}}]},{status:options.geminiStatus||200});
  };
  const handler=createDinnerHandler({env:k=>config[k],fetchImpl,now:()=>clock,preview:options.preview||false});
  const request=(body={householdId},headers={})=>new Request('https://test.supabase.co/functions/v1/generate-dinner',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer user-jwt',Origin:'http://localhost:8000',...headers},body:JSON.stringify(body)});
@@ -38,6 +51,25 @@ test('authenticated RLS reads and server-only Gemini call return exactly three c
  const sent=JSON.parse(gemini.init.body);assert.ok(!JSON.stringify(sent).includes(userId));assert.ok(!JSON.stringify(sent).includes('user-jwt'));
  assert.deepEqual(JSON.parse(sent.contents[0].parts[0].text).inventory,['卵','玉ねぎ']);
  assert.ok(!JSON.stringify(data).includes('SERVER_ONLY_SECRET'));
+});
+
+test('one invalid recipe is repaired once with the original quality and shared timeout',async()=>{
+ const invalid=dinnerFixture();invalid.patterns[0].dishes[1].steps.pop();
+ const h=harness({outputs:[invalid,dinnerFixture()]});const r=await h.handler(h.request());
+ assert.equal(r.status,200);assert.equal((await r.json()).patterns.length,3);
+ const calls=h.calls.filter(c=>c.url.includes('googleapis'));assert.equal(calls.length,2);
+ assert.equal(calls[0].init.signal,calls[1].init.signal);
+ const repair=JSON.parse(calls[1].init.body);
+ assert.equal(repair.contents[1].role,'model');
+ assert.match(repair.contents[2].parts[0].text,/\$\.patterns\[0\]\.dishes\[1\]\.steps/);
+ assert.match(repair.systemInstruction.parts[0].text,/中心75℃/);
+ assert.ok(!JSON.stringify(repair).includes('user-jwt'));
+ const failing=harness({output:invalid});assert.equal((await failing.handler(failing.request())).status,502);
+ assert.equal(failing.calls.filter(c=>c.url.includes('googleapis')).length,2);
+ for(const option of [{geminiStatus:429},{geminiStatus:500},{finishReason:'MAX_TOKENS'}]){
+  const failed=harness(option);await failed.handler(failed.request());
+  assert.equal(failed.calls.filter(c=>c.url.includes('googleapis')).length,1);
+ }
 });
 test('unauthenticated callers and foreign households cannot call Gemini',async()=>{
  for(const option of [{authStatus:401},{forbidden:true}]){
