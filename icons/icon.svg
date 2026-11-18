@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <title>うちの暮らし</title>
+  <path fill="#F7F4ED" d="M0 0h512v512H0z"/>
+  <circle cx="256" cy="256" r="184" fill="none" stroke="#D4BBA8" stroke-width="3"/>
+  <path d="M198 194 177 286C168 326 183 342 207 337 232 332 249 308 260 279L278 194M260 279 250 320C246 337 252 341 268 329" fill="none" stroke="#A95336" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="310" cy="328" r="11" fill="#A95336"/>
+  <path d="M300 190C297 150 338 136 354 136 354 170 337 193 300 190Z" fill="#A2B4A0"/>
+  <path d="m302 187 33-32" fill="none" stroke="#526E55" stroke-width="3" stroke-linecap="round"/>
+</svg>

@@ -1,0 +1,16 @@
+{
+  "id": "/uchino-reizouko/",
+  "name": "うちの暮らし",
+  "short_name": "うちの暮らし",
+  "description": "ふたりと、家族の毎日を。冷蔵庫・AI献立・買い物をひとつに。",
+  "lang": "ja",
+  "start_url": "/uchino-reizouko/",
+  "scope": "/uchino-reizouko/",
+  "display": "standalone",
+  "background_color": "#F7F4ED",
+  "theme_color": "#F7F4ED",
+  "icons": [
+    {"src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+    {"src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable"}
+  ]
+}
