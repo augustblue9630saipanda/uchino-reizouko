@@ -18,7 +18,7 @@ async function setup(options={}){
  const nav=['home','fridge','dinner','shopping'].map(page=>Object.assign(node('button'),{dataset:{page}}));
  const document={visibilityState:'visible',getElementById:id=>nodes.get(id),createElement:node,createElementNS:(ns,tag)=>node(tag),createDocumentFragment:()=>({...node(),fragment:true}),createTextNode:text=>({textContent:text,children:[]}),addEventListener(){},querySelector(s){if(s==='dialog[open]')return [...nodes.values()].find(n=>n.tagName==='DIALOG'&&n.open)||null;return null;},querySelectorAll(s){if(s==='dialog')return [...nodes.values()].filter(n=>n.tagName==='DIALOG');if(s==='dialog[open]')return [...nodes.values()].filter(n=>n.tagName==='DIALOG'&&n.open);if(s==='.page')return ['home','fridge','dinner','shopping'].map(p=>nodes.get('page-'+p));if(s==='.navBtn')return nav;return[];}};
  let items=[];const calls=[],subscriptions=[];
- const db={auth:{getSession:async()=>({data:{session:null}}),onAuthStateChange(){}},functions:{invoke:options.invoke||(async()=>({data:{...annotateStock(dinnerFixture(),['卵']),householdId:hh},error:null}))},removeChannel(){},channel(){const ch={on(event,filter,callback){subscriptions.push({filter,callback});return ch;},subscribe(){return ch;}};return ch;},from(table){
+ const db={auth:{getSession:async()=>({data:{session:null}}),onAuthStateChange(){},signUp:options.signUp,resend:options.resend},functions:{invoke:options.invoke||(async()=>({data:{...annotateStock(dinnerFixture(),['卵']),householdId:hh},error:null}))},removeChannel(){},channel(){const ch={on(event,filter,callback){subscriptions.push({filter,callback});return ch;},subscribe(){return ch;}};return ch;},from(table){
   const call={table,op:'select',filters:{}};const query={select(){return query;},order(){return query;},eq(k,v){call.filters[k]=v;return query;},insert(values){call.op='insert';call.values=values;return query;},update(values){call.op='update';call.values=values;return query;},delete(){call.op='delete';return query;},then(resolve,reject){calls.push(call);return Promise.resolve().then(async()=>{
    if(options.query)return options.query(call);
    if(options.fail&&call.op!=='select')return {error:{message:'保存失敗'}};
@@ -31,7 +31,7 @@ async function setup(options={}){
    return {data:[],error:null};
   }).then(resolve,reject);}};return query;
  }};
- const context=vm.createContext({document,window:{scrollTo(){},addEventListener(){}},createClient:()=>db,URL,Intl,Date,console,setTimeout:()=>0,clearTimeout(){},setInterval(){},localStorage:{getItem(){return null;},setItem(){}},navigator:{clipboard:{writeText:async()=>{}}}});
+ const context=vm.createContext({document,window:{location:{hash:options.hash||'',origin:'http://localhost:3000'},scrollTo(){},addEventListener(){}},createClient:()=>db,URL,URLSearchParams,Intl,Date,console,setTimeout:()=>0,clearTimeout(){},setInterval(){},localStorage:{getItem(){return null;},setItem(){}},navigator:{clipboard:{writeText:async()=>{}}}});
  const api=await vm.runInContext('(async()=>{'+source+`
  return {setup(){activeUser={id:'u',email:'test@example.test'};householdId='${hh}';mealItems=[{id:'f1',name:'卵'}];shoppingLoaded=true;renderPantry();renderShopping();},state(){return {householdId,currentPage,dinnerPlans,shoppingItems,mealItems,dinnerBusy};},navigate,renderDinner,openRecipe,renderDish,resetScope,categoryFor,loadShopping,loadItems,subscribeHousehold,toggleShopping,editShopping,editFood,logout(){activeUser=null;householdId=null;resetScope();},switchScope(){householdId='other';resetScope();},addExternal(){},};
  })()`,context);
@@ -83,4 +83,22 @@ test('late shopping reads from previous household are discarded',async()=>{
 });
 test('realtime subscription refreshes only its current household scope',async()=>{
  const {api,subscriptions,calls}=await setup();api.subscribeHousehold();assert.equal(subscriptions[0].filter.filter,'household_id=eq.'+hh);subscriptions[0].callback();await new Promise(r=>setTimeout(r,0));assert.ok(calls.some(c=>c.table==='shopping_items'&&c.filters.household_id===hh));const n=calls.length;api.switchScope();subscriptions[0].callback();await Promise.resolve();assert.equal(calls.length,n);
+});
+
+test('signup explicitly redirects to the production app even when opened on localhost',async()=>{
+ let sent;const {nodes}=await setup({signUp:async args=>{sent=args;return {data:{session:null},error:null};}});
+ nodes.get('email').value='wife@example.test';nodes.get('password').value='test-password';await nodes.get('signup').onclick();
+ assert.equal(sent.options.emailRedirectTo,'https://augustblue9630saipanda.github.io/uchino-reizouko/');
+ assert.ok(nodes.get('authNotice').textContent.includes('確認メール'));
+});
+test('confirmation resend uses the existing email without password and the same production redirect',async()=>{
+ let sent;const {nodes}=await setup({resend:async args=>{sent=args;return {error:null};}});
+ nodes.get('email').value='wife@example.test';nodes.get('password').value='';await nodes.get('resendConfirmation').onclick();
+ assert.equal(sent.type,'signup');assert.equal(sent.email,'wife@example.test');assert.equal(sent.options.emailRedirectTo,'https://augustblue9630saipanda.github.io/uchino-reizouko/');
+ assert.ok(!Object.hasOwn(sent,'password'));assert.ok(nodes.get('authNotice').textContent.includes('いちばん新しい'));assert.equal(nodes.get('resendConfirmation').disabled,true);
+});
+test('resend failures allow retry and expired links show recovery instructions without echoing tokens',async()=>{
+ const {nodes}=await setup({hash:'#error=access_denied&error_code=otp_expired&access_token=DO_NOT_DISPLAY',resend:async()=>({error:{status:429,message:'limit'}})});
+ assert.ok(nodes.get('authNotice').textContent.includes('期限切れ'));assert.ok(!nodes.get('authNotice').textContent.includes('DO_NOT_DISPLAY'));
+ nodes.get('email').value='wife@example.test';await nodes.get('resendConfirmation').onclick();assert.equal(nodes.get('resendConfirmation').disabled,false);assert.ok(nodes.get('authNotice').textContent.includes('しばらく'));
 });

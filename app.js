@@ -2,6 +2,8 @@ import {createClient} from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2
 
 const url='https://moorgivgwmkbxyjvwuih.supabase.co';
 const key='sb_publishable_4cMwMgr654spcCXTKnsabw_a6AEu77x';
+// Exact allowlisted URL; never derive email redirects from localhost or a query parameter.
+const AUTH_REDIRECT_URL='https://augustblue9630saipanda.github.io/uchino-reizouko/';
 const db=createClient(url,key);
 const $=id=>document.getElementById(id);
 const categories=['野菜・果物','肉・魚','卵・乳製品','主食','その他'];
@@ -236,11 +238,22 @@ async function refreshHouseholds(preferredId){
 }
 async function initialize(user){activeUser=user;householdId=null;resetScope();show(user);inviteValue='';$('inviteCode').classList.add('hidden');$('copyInvite').classList.add('hidden');navigate('home');if(!user)return;try{await refreshHouseholds();}catch(e){message('読み込みに失敗しました：'+e.message);}}
 $('loginForm').onsubmit=async e=>{e.preventDefault();$('login').disabled=true;try{const {data,error}=await db.auth.signInWithPassword({email:$('email').value.trim(),password:$('password').value});if(error)throw error;$('password').value='';await initialize(data.user);}catch(e){message('ログインできませんでした：'+e.message);}finally{$('login').disabled=false;}};
-$('signup').onclick=async()=>{const email=$('email').value.trim(),password=$('password').value;if(!email||password.length<6){message('メールアドレスと6文字以上のパスワードを入力してください。');return;}$('signup').disabled=true;try{const {data,error}=await db.auth.signUp({email,password});if(error)throw error;if(data.session)await initialize(data.user);else message('確認メールのリンクを開いてからログインしてください。');}catch(e){message('登録できませんでした：'+e.message);}finally{$('signup').disabled=false;}};
+function authNotice(text){$('authNotice').textContent=text;$('authNotice').classList.remove('hidden');}
+$('signup').onclick=async()=>{const email=$('email').value.trim(),password=$('password').value;if(!email||password.length<6){authNotice('メールアドレスと6文字以上のパスワードを入力してください。');return;}$('signup').disabled=true;try{const {data,error}=await db.auth.signUp({email,password,options:{emailRedirectTo:AUTH_REDIRECT_URL}});if(error)throw error;if(data.session)await initialize(data.user);else authNotice('確認メールを送信しました。メール内のリンクを開くと「うちの暮らし」に戻ります。すでに登録を試した方は、ログインするか、確認メールの再送をご利用ください。');}catch(e){authNotice('登録できませんでした：'+e.message);}finally{$('signup').disabled=false;}};
+$('resendConfirmation').onclick=async()=>{
+ const email=$('email').value.trim();
+ if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){authNotice('登録に使ったメールアドレスを入力してから、確認メールを再送してください。パスワードの入力は不要です。');return;}
+ const btn=$('resendConfirmation');btn.disabled=true;let sent=false;
+ try{const {error}=await db.auth.resend({type:'signup',email,options:{emailRedirectTo:AUTH_REDIRECT_URL}});if(error)throw error;sent=true;authNotice('未確認の登録がある場合は、確認メールが再送されます。古いメールではなく、いちばん新しいメールのリンクを開いてください。すでに確認済みなら、そのままログインできます。再送は1分ほど間をあけてください。');}
+ catch(e){authNotice('再送できませんでした：'+(e.status===429?'しばらく待ってからもう一度お試しください。':e.message));}
+ finally{if(sent)setTimeout(()=>{btn.disabled=false;},60000);else btn.disabled=false;}
+};
 $('logout').onclick=async()=>{const {error}=await db.auth.signOut();if(error){message(error.message);return;}await initialize(null);};
 $('householdSelect').onchange=async()=>{const target=$('householdSelect').value;householdId=target;resetScope();localStorage.setItem(savedKey(),target);try{await Promise.all([loadItems(),loadShopping()]);subscribeHousehold();message('共有する冷蔵庫と買い物リストを切り替えました。');}catch(e){message(e.message);}};
 $('makeInvite').onclick=async()=>{if(!householdId)return;$('makeInvite').disabled=true;const scope=scopeVersion;try{const {data,error}=await db.rpc('create_household_invitation',{target_household_id:householdId});if(error)throw error;if(scope!==scopeVersion)return;inviteValue=data;$('inviteCode').textContent=data;$('inviteCode').classList.remove('hidden');$('copyInvite').classList.remove('hidden');message('家族に招待コードを伝えてください。');}catch(e){message(e.message);}finally{$('makeInvite').disabled=false;}};
 $('copyInvite').onclick=async()=>{try{await navigator.clipboard.writeText(inviteValue);message('招待コードをコピーしました。');}catch{message('表示された招待コードを選択してコピーしてください。');}};
 $('joinForm').onsubmit=async e=>{e.preventDefault();const code=$('joinCode').value.trim().toLowerCase();if(!code)return;const btn=$('joinForm').querySelector('button');btn.disabled=true;try{const {data,error}=await db.rpc('join_household',{invitation_code:code});if(error)throw error;householdId=null;resetScope();await refreshHouseholds(data);$('joinCode').value='';navigate('fridge');message('家族の冷蔵庫と買い物リストに参加しました。');}catch(e){message(e.message);}finally{btn.disabled=false;}};
 renderFilters();
+// Show a useful recovery message for expired/reused confirmation links, without displaying tokens.
+if(new URLSearchParams(window.location.hash.slice(1)).has('error'))authNotice('確認リンクが期限切れ、または使用済みの可能性があります。まずログインを試し、未確認と表示された場合は、登録したメールアドレスで確認メールを再送してください。');
 try{const {data:{session},error}=await db.auth.getSession();if(error)throw error;await initialize(session?.user||null);db.auth.onAuthStateChange((event)=>{if(event==='SIGNED_OUT'){activeUser=null;householdId=null;resetScope();show(null);}});}catch(e){message('起動できませんでした：'+e.message);}
