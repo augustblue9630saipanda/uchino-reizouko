@@ -25,7 +25,7 @@
 
 本番のサブパスまで含めます。`https://augustblue9630saipanda.github.io/` だけや、存在しない `/auth/callback` にはしません。メール認証を無効にする必要はありません。メールテンプレートを独自に変更している場合は、リンクにlocalhostが直書きされていないか確認し、Supabaseの `{{ .ConfirmationURL }}` を利用します。
 
-この作業ではWindows側のブラウザURL確認ができず、自動操作が停止しました。設定値を保存できたとは扱わず、利用者に上記2項目の保存を依頼しています。
+管理画面の自動操作はWindows側のブラウザURL確認で停止したため、利用者が上記2項目を保存しました。その後の再検証で、既定の戻り先・本番URLを明示した戻り先の両方が本番URLになることを確認済みです。
 
 ## すでに登録を試みたアカウント
 
@@ -39,6 +39,6 @@
 
 `node --check app.js` と `node --test tests/*.test.mjs` は25件成功。新規登録・再送の本番URL固定、パスワードなしでの再送、期限切れ案内、再送エラー時の復帰を確認しました。
 
-`node scripts/check-auth-redirects.mjs` は実アカウントやメールを使わず、意図的に無効な確認リンクのLocationだけを検証します。修正前はどちらもlocalhostでした。設定保存後、両方で `productionMatch: true` になることを確認します。実際の確認メールの受信・クリック完了は本人による確認が必要です。
+`node scripts/check-auth-redirects.mjs` は実アカウントやメールを使わず、意図的に無効な確認リンクのLocationだけを検証します。修正前はどちらもlocalhostでした。利用者による設定保存後、両方が303で本番URLへ戻り、`productionMatch: true` になりました。検証の `otp_expired` は無効なテスト用リンクを使ったための想定どおりの結果で、実アカウントの認証失敗を示すものではありません。実際の確認メールの受信・クリック完了は本人による確認が必要です。
 
 参考：[Supabase Redirect URLs](https://supabase.com/docs/guides/auth/redirect-urls)、[signUp](https://supabase.com/docs/reference/javascript/auth-signup)、[resend](https://supabase.com/docs/reference/javascript/auth-resend)。
