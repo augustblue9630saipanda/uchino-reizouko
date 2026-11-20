@@ -1,4 +1,5 @@
 import {createClient} from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+import {createFeedback} from './feedback.mjs?v=20261120.1';
 
 const url='https://moorgivgwmkbxyjvwuih.supabase.co';
 const key='sb_publishable_4cMwMgr654spcCXTKnsabw_a6AEu77x';
@@ -23,16 +24,18 @@ function message(text){
 }
 function openSheet(id){document.querySelectorAll('dialog[open]').forEach(d=>d.close());const dialog=$(id);dialog.querySelectorAll('[data-dialog-status]').forEach(n=>n.remove());dialog.showModal();dialog.scrollTop=0;}
 function closeSheets(){document.querySelectorAll('dialog[open]').forEach(d=>d.close());}
-document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>$(b.dataset.close).close());
-document.querySelectorAll('dialog').forEach(d=>d.addEventListener('click',e=>{if(e.target===d){const r=d.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)d.close();}}));
+document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>{const d=$(b.dataset.close);if(!d.classList.contains('is-saving'))d.close();});
+document.querySelectorAll('dialog').forEach(d=>d.addEventListener('click',e=>{if(e.target===d&&!d.classList.contains('is-saving')){const r=d.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)d.close();}}));
 
 function navigate(page){
- if(!['home','fridge','dinner','shopping'].includes(page))return;
+ if(!['home','fridge','dinner','shopping','feedback'].includes(page))return;
+ if(page==='feedback')closeSheets();
  currentPage=page;
  document.querySelectorAll('.page').forEach(n=>n.classList.toggle('active',n.id==='page-'+page));
  document.querySelectorAll('.navBtn').forEach(n=>{const active=n.dataset.page===page;n.classList.toggle('active',active);if(active)n.setAttribute('aria-current','page');else n.removeAttribute('aria-current');});
  window.scrollTo({top:0,behavior:'smooth'});
  if(activeUser&&householdId){if(page==='shopping')loadShopping().catch(e=>message('買い物の読み込み：'+e.message));else if(page==='fridge')loadItems().catch(e=>message('食材の読み込み：'+e.message));}
+ if(page==='feedback'&&activeUser&&householdId)feedback.load().catch(e=>message('ご意見メモの読み込み：'+e.message));
 }
 document.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>navigate(b.dataset.go));
 document.querySelectorAll('.navBtn').forEach(b=>b.onclick=()=>navigate(b.dataset.page));
@@ -154,7 +157,7 @@ function subscribeHousehold(){
  channel=db.channel('household-'+householdId+'-'+scope).on('postgres_changes',{event:'*',schema:'public',table:'shopping_items',filter:'household_id=eq.'+householdId},()=>{if(scope===scopeVersion)loadShopping().catch(()=>{});}).subscribe();
 }
 // Visibility/focus and a light poll also cover missed events and deletes on other devices.
-function refreshVisible(){if(!activeUser||!householdId||document.visibilityState==='hidden')return;loadShopping().catch(()=>{});if(currentPage==='fridge')loadItems().catch(()=>{});}
+function refreshVisible(){if(!activeUser||!householdId||document.visibilityState==='hidden')return;loadShopping().catch(()=>{});if(currentPage==='fridge')loadItems().catch(()=>{});feedback.refresh().catch(()=>{});}
 window.addEventListener('focus',refreshVisible);document.addEventListener('visibilitychange',refreshVisible);setInterval(refreshVisible,20000);
 
 function resetDinner(text='冷蔵庫の食材から、今夜の献立を考えましょう。'){
@@ -226,15 +229,15 @@ $('saveCandidates').onclick=async()=>{
 };
 
 function savedKey(){return activeUser?'reizouko-household-'+activeUser.id:'';}
-function resetScope(){scopeVersion++;pantryRequest++;shoppingRequest++;mealItems=null;shoppingItems=[];shoppingLoaded=false;shoppingLocks.clear();closeSheets();clearPhoto();resetDinner();renderPantry();renderShopping();if(channel){db.removeChannel(channel);channel=null;}}
-function show(user){$('authBox').classList.toggle('hidden',!!user);$('appBox').classList.toggle('hidden',!user);$('bottomNav').classList.toggle('hidden',!user);$('settingsOpen').classList.toggle('hidden',!user);$('account').textContent=user?'ログイン中：'+user.email:'';}
+function resetScope(){scopeVersion++;pantryRequest++;shoppingRequest++;mealItems=null;shoppingItems=[];shoppingLoaded=false;shoppingLocks.clear();closeSheets();clearPhoto();resetDinner();renderPantry();renderShopping();feedback.reset();feedback.sync();if(channel){db.removeChannel(channel);channel=null;}}
+function show(user){$('authBox').classList.toggle('hidden',!!user);$('appBox').classList.toggle('hidden',!user);$('bottomNav').classList.toggle('hidden',!user);$('settingsOpen').classList.toggle('hidden',!user);$('account').textContent=user?'ログイン中：'+user.email:'';feedback.sync();}
 async function getHouseholds(){const {data,error}=await db.from('households').select('id,name').order('created_at',{ascending:true});if(error)throw error;return data||[];}
 async function refreshHouseholds(preferredId){
  const scope=scopeVersion;let households=await getHouseholds();if(scope!==scopeVersion)return;
  if(!households.length){const {error}=await db.rpc('create_household',{household_name:'うちの冷蔵庫'});if(error)throw error;households=await getHouseholds();if(scope!==scopeVersion)return;if(!households.length)throw Error('冷蔵庫を取得できませんでした。');}
  const stored=preferredId||localStorage.getItem(savedKey()),selected=households.find(h=>h.id===stored)||households[0];householdId=selected.id;$('householdSelect').replaceChildren();
  for(const h of households){const option=el('option','',h.name||'家族の冷蔵庫');option.value=h.id;$('householdSelect').append(option);}$('householdSelect').value=householdId;localStorage.setItem(savedKey(),householdId);
- await Promise.all([loadItems(),loadShopping()]);subscribeHousehold();
+ await Promise.all([loadItems(),loadShopping()]);subscribeHousehold();feedback.sync();
 }
 async function initialize(user){activeUser=user;householdId=null;resetScope();show(user);inviteValue='';$('inviteCode').classList.add('hidden');$('copyInvite').classList.add('hidden');navigate('home');if(!user)return;try{await refreshHouseholds();}catch(e){message('読み込みに失敗しました：'+e.message);}}
 $('loginForm').onsubmit=async e=>{e.preventDefault();$('login').disabled=true;try{const {data,error}=await db.auth.signInWithPassword({email:$('email').value.trim(),password:$('password').value});if(error)throw error;$('password').value='';await initialize(data.user);}catch(e){message('ログインできませんでした：'+e.message);}finally{$('login').disabled=false;}};
@@ -253,6 +256,7 @@ $('householdSelect').onchange=async()=>{const target=$('householdSelect').value;
 $('makeInvite').onclick=async()=>{if(!householdId)return;$('makeInvite').disabled=true;const scope=scopeVersion;try{const {data,error}=await db.rpc('create_household_invitation',{target_household_id:householdId});if(error)throw error;if(scope!==scopeVersion)return;inviteValue=data;$('inviteCode').textContent=data;$('inviteCode').classList.remove('hidden');$('copyInvite').classList.remove('hidden');message('家族に招待コードを伝えてください。');}catch(e){message(e.message);}finally{$('makeInvite').disabled=false;}};
 $('copyInvite').onclick=async()=>{try{await navigator.clipboard.writeText(inviteValue);message('招待コードをコピーしました。');}catch{message('表示された招待コードを選択してコピーしてください。');}};
 $('joinForm').onsubmit=async e=>{e.preventDefault();const code=$('joinCode').value.trim().toLowerCase();if(!code)return;const btn=$('joinForm').querySelector('button');btn.disabled=true;try{const {data,error}=await db.rpc('join_household',{invitation_code:code});if(error)throw error;householdId=null;resetScope();await refreshHouseholds(data);$('joinCode').value='';navigate('fridge');message('家族の冷蔵庫と買い物リストに参加しました。');}catch(e){message(e.message);}finally{btn.disabled=false;}};
+const feedback=createFeedback({document,window,db,getScope:()=>({user:activeUser,householdId,version:scopeVersion,page:currentPage}),notify:message,navigate,openSheet,el,button,icon});
 renderFilters();
 // Show a useful recovery message for expired/reused confirmation links, without displaying tokens.
 if(new URLSearchParams(window.location.hash.slice(1)).has('error'))authNotice('確認リンクが期限切れ、または使用済みの可能性があります。まずログインを試し、未確認と表示された場合は、登録したメールアドレスで確認メールを再送してください。');
