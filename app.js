@@ -1,5 +1,5 @@
 import {createClient} from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
-import {createFeedback} from './feedback.mjs?v=20261120.1';
+import {createFeedback} from './feedback.mjs?v=20261120.2';
 
 const url='https://moorgivgwmkbxyjvwuih.supabase.co';
 const key='sb_publishable_4cMwMgr654spcCXTKnsabw_a6AEu77x';

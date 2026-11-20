@@ -11,7 +11,7 @@ export function formatFeedbackExport(notes){
 
 export function createFeedback({document,window,db,getScope,notify,navigate,openSheet,el,button,icon}){
  const $=id=>document.getElementById(id),bucket=db.storage?.from('feedback-images');
- let notes=[],selected=new Set(),request=0,epoch=0,renderVersion=0,origin='home',attachment=null,previewURL=null,saving=false,converting=false,loaded=false,more=false;
+ let notes=[],selected=new Set(),request=0,epoch=0,renderVersion=0,origin='home',attachment=null,previewURL=null,saving=false,converting=false,loaded=false,more=false,pendingDelete=null;
  const imageURLs=new Set(),locks=new Set();
  const scope=()=>({...getScope(),epoch});
  const current=s=>s.epoch===epoch&&s.version===getScope().version&&s.householdId===getScope().householdId&&s.user?.id===getScope().user?.id;
@@ -19,7 +19,7 @@ export function createFeedback({document,window,db,getScope,notify,navigate,open
  function clearPreview(){if(previewURL)URL.revokeObjectURL(previewURL);previewURL=null;attachment=null;$('feedbackFile').value='';$('feedbackPreview').removeAttribute('src');$('feedbackPreviewBox').classList.add('hidden');}
  function revokeImages(){for(const url of imageURLs)URL.revokeObjectURL(url);imageURLs.clear();}
  function setBusy(){ $('feedbackSubmit').disabled=saving||converting; $('feedbackFile').disabled=saving||converting;$('feedbackRemovePreview').disabled=saving||converting;$('feedbackBody').readOnly=saving; }
- function reset(){epoch++;request++;renderVersion++;notes=[];selected.clear();loaded=false;more=false;locks.clear();clearPreview();revokeImages();saving=false;converting=false;setBusy();$('feedbackCompose').classList.remove('is-saving');$('feedbackBody').value='';$('feedbackExportText').value='';$('feedbackItems').replaceChildren();$('feedbackStatus').textContent='ご意見メモを読み込みます。';}
+ function reset(){epoch++;request++;renderVersion++;notes=[];selected.clear();loaded=false;more=false;pendingDelete=null;locks.clear();clearPreview();revokeImages();saving=false;converting=false;setBusy();$('feedbackDeleteConfirm').disabled=false;$('feedbackDeleteDialog').classList.remove('is-saving');$('feedbackCompose').classList.remove('is-saving');$('feedbackBody').value='';$('feedbackExportText').value='';$('feedbackItems').replaceChildren();$('feedbackStatus').textContent='ご意見メモを読み込みます。';}
  function sync(){ $('feedbackFab').classList.toggle('hidden',!getScope().user);$('feedbackFab').disabled=!ready(); }
  function open(){
   if(!ready()){notify('共有する世帯を読み込み中です。少し待ってからお試しください。');return;}
@@ -58,16 +58,17 @@ export function createFeedback({document,window,db,getScope,notify,navigate,open
   try{const {data,error}=await db.from('feedback_notes').update({status}).eq('id',note.id).eq('household_id',s.householdId).select('id');if(error)throw error;if(!data?.length)throw Error('このメモは削除されたか、共有先が変わっています。');if(current(s))await load();}
   catch(e){if(current(s)){notify('更新できませんでした：'+e.message);render();}}finally{locks.delete(note.id);}
  }
+ function requestRemove(note,imageOnly=false){pendingDelete={note,imageOnly};$('feedbackDeleteText').textContent=imageOnly?'添付画像を削除します。ご意見の本文は残ります。':'このご意見メモと添付画像を削除します。この操作は取り消せません。';openSheet('feedbackDeleteDialog');}
  async function remove(note,imageOnly=false){
   if(locks.has(note.id)||!ready())return;
-  if(!window.confirm(imageOnly?'この添付画像を削除しますか？':'このご意見メモと添付画像を削除しますか？'))return;
   const s=scope();locks.add(note.id);
+  $('feedbackDeleteConfirm').disabled=true;$('feedbackDeleteDialog').classList.add('is-saving');
   try{
    if(note.image_path){const {error}=await bucket.remove([note.image_path]);if(error)throw error;}
    // Storage must succeed first, so a failed upload cleanup can be retried from the note.
    const q=db.from('feedback_notes');const {error}=imageOnly?await q.update({image_path:null}).eq('id',note.id).eq('household_id',s.householdId):await q.delete().eq('id',note.id).eq('household_id',s.householdId);
-   if(error)throw error;if(!current(s))return;await load();notify(imageOnly?'添付画像を削除しました。':'ご意見メモを削除しました。');
-  }catch(e){if(current(s))notify('削除を完了できませんでした。もう一度お試しください：'+e.message);}finally{locks.delete(note.id);}
+   if(error)throw error;if(!current(s))return;await load();pendingDelete=null;$('feedbackDeleteDialog').close();notify(imageOnly?'添付画像を削除しました。':'ご意見メモを削除しました。');
+  }catch(e){if(current(s))notify('削除を完了できませんでした。もう一度お試しください：'+e.message);}finally{locks.delete(note.id);if(current(s)){$('feedbackDeleteConfirm').disabled=false;$('feedbackDeleteDialog').classList.remove('is-saving');}}
  }
  function render(){
   const s=scope(),version=++renderVersion;revokeImages();$('feedbackItems').replaceChildren();
@@ -86,8 +87,8 @@ export function createFeedback({document,window,db,getScope,notify,navigate,open
    }
    const actions=el('div','feedback-actions'),status=el('select');status.setAttribute('aria-label','対応状況');for(const label of feedbackStatuses){const option=el('option','',label);option.value=label;status.append(option);}status.value=note.status;status.onchange=()=>changeStatus(note,status.value);
    actions.append(status,button('コピー','text-button',()=>copy(formatFeedbackExport([note]))));
-   if(note.image_path)actions.append(button('画像を削除','text-button',()=>remove(note,true)));
-   actions.append(button('メモを削除','text-button feedback-delete',()=>remove(note)));card.append(actions);$('feedbackItems').append(card);
+   if(note.image_path)actions.append(button('画像を削除','text-button',()=>requestRemove(note,true)));
+   actions.append(button('メモを削除','text-button feedback-delete',()=>requestRemove(note)));card.append(actions);$('feedbackItems').append(card);
   }updateSelection();
  }
  $('feedbackFab').onclick=open;$('feedbackNew').onclick=open;
@@ -99,6 +100,8 @@ export function createFeedback({document,window,db,getScope,notify,navigate,open
  $('feedbackMore').onclick=()=>load({next:true}).catch(e=>notify(e.message));$('feedbackFilter').onchange=render;
  $('feedbackExport').onclick=()=>{const rows=selected.size?notes.filter(n=>selected.has(n.id)):notes.filter(n=>!$('feedbackFilter').value||n.status===$('feedbackFilter').value);$('feedbackExportText').value=formatFeedbackExport(rows);openSheet('feedbackExportDialog');};
  $('feedbackCopyExport').onclick=()=>copy($('feedbackExportText').value);
+ $('feedbackDeleteConfirm').onclick=()=>pendingDelete?remove(pendingDelete.note,pendingDelete.imageOnly):Promise.resolve();
+ $('feedbackDeleteDialog').addEventListener('cancel',e=>{if($('feedbackDeleteConfirm').disabled)e.preventDefault();});
  $('feedbackSelectText').onclick=()=>{$('feedbackExportText').focus();$('feedbackExportText').select();};
  $('feedbackForm').onsubmit=async e=>{
   e.preventDefault();if(saving||converting||!ready())return;const body=$('feedbackBody').value.trim();if(!body||body.length>5000){notify('ご意見を1〜5000文字で入力してください。');return;}

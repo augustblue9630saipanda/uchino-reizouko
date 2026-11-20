@@ -44,8 +44,8 @@ test('filter, selected export and status update remain household-scoped',async()
  h.$('feedbackFilter').value='対応済み';h.$('feedbackFilter').onchange();assert.equal(h.$('feedbackItems').children.length,1);
 });
 test('storage removal failure prevents note deletion; image-only removal keeps the note',async()=>{
- const n={...note,image_path:feedbackImagePath(hh,note.id)},h=setup({rows:[n],storageError:new Error('通信失敗')});await h.api.load();let actions=h.$('feedbackItems').children[0].children.at(-1);await actions.children.at(-1).onclick();assert.ok(!h.calls.some(c=>c.op==='delete'));
- const ok=setup({rows:[n]});await ok.api.load();actions=ok.$('feedbackItems').children[0].children.at(-1);await actions.children.find(c=>c.textContent==='画像を削除').onclick();const change=ok.calls.find(c=>c.op==='update');assert.deepEqual(change.value,{image_path:null});assert.equal(change.filters.household_id,hh);
+ const n={...note,image_path:feedbackImagePath(hh,note.id)},h=setup({rows:[n],storageError:new Error('通信失敗')});await h.api.load();let actions=h.$('feedbackItems').children[0].children.at(-1);await actions.children.at(-1).onclick();assert.equal(h.$('feedbackDeleteDialog').open,true);await h.$('feedbackDeleteConfirm').onclick();assert.ok(!h.calls.some(c=>c.op==='delete'));
+ const ok=setup({rows:[n]});await ok.api.load();actions=ok.$('feedbackItems').children[0].children.at(-1);await actions.children.find(c=>c.textContent==='画像を削除').onclick();await ok.$('feedbackDeleteConfirm').onclick();const change=ok.calls.find(c=>c.op==='update');assert.deepEqual(change.value,{image_path:null});assert.equal(change.filters.household_id,hh);
 });
 test('unauthenticated state cannot post or load feedback',async()=>{
  const h=setup();h.setScope({user:null,householdId:null});h.api.sync();h.api.open();h.$('feedbackBody').value='送らない';await h.$('feedbackForm').onsubmit(submit);await h.api.load();assert.equal(h.calls.length,0);assert.equal(h.$('feedbackFab').disabled,true);
