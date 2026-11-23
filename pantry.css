@@ -1,0 +1,10 @@
+/* One ingredient per row on phone and desktop. All actions have 44px targets. */
+#items.food-grid{display:flex;flex-direction:column;gap:0;border-top:1px solid var(--line)}
+.food-row{display:flex;align-items:center;gap:8px;min-height:60px;padding:6px 0;border-bottom:1px solid var(--line)}
+.food-row-name{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:14px;font-weight:600}
+.quantity-switch{display:flex;flex-shrink:0;gap:0;background:#ebece3;border:1px solid #d9ddcf;border-radius:12px;padding:2px}
+.quantity-button{width:44px;min-height:44px;padding:0;border-radius:9px;font-size:13px;color:#73766a}
+.quantity-button[aria-pressed=true]{background:#fffefb;color:#526e55;font-weight:700;box-shadow:0 1px 5px #292d2912}
+.quantity-button:disabled{cursor:wait}.food-more{width:44px;min-height:44px;flex-shrink:0;font-size:24px;color:#73766a;padding:0;border-radius:10px}.food-more:hover{background:#eeebe3}
+.duplicate-names{padding:16px 18px 16px 35px;background:#e8eddf;border-radius:12px;overflow-wrap:anywhere;font-size:14px}
+@media(max-width:360px){.food-row{gap:3px}.food-row-name{font-size:13px}.food-more{width:44px}}

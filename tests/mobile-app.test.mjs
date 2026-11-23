@@ -19,7 +19,7 @@ async function setup(options={}){
  const nav=['home','fridge','dinner','shopping'].map(page=>Object.assign(node('button'),{dataset:{page}}));
  const document={visibilityState:'visible',getElementById:id=>nodes.get(id),createElement:node,createElementNS:(ns,tag)=>node(tag),createDocumentFragment:()=>({...node(),fragment:true}),createTextNode:text=>({textContent:text,children:[]}),addEventListener(){},querySelector(s){if(s==='dialog[open]')return [...nodes.values()].find(n=>n.tagName==='DIALOG'&&n.open)||null;return null;},querySelectorAll(s){if(s==='dialog')return [...nodes.values()].filter(n=>n.tagName==='DIALOG');if(s==='dialog[open]')return [...nodes.values()].filter(n=>n.tagName==='DIALOG'&&n.open);if(s==='.page')return ['home','fridge','dinner','shopping'].map(p=>nodes.get('page-'+p));if(s==='.navBtn')return nav;return[];}};
  let items=[];const calls=[],subscriptions=[];
- const db={auth:{getSession:async()=>({data:{session:null}}),onAuthStateChange(){},signUp:options.signUp,resend:options.resend},functions:{invoke:options.invoke||(async()=>({data:{...annotateStock(dinnerFixture(),['卵']),householdId:hh},error:null}))},removeChannel(){},channel(){const ch={on(event,filter,callback){subscriptions.push({filter,callback});return ch;},subscribe(){return ch;}};return ch;},from(table){
+ const db={rpc:async(name,args)=>{calls.push({rpc:name,args});return options.rpc?options.rpc(name,args):{data:{status:"saved",count:args.p_items.length},error:null};},auth:{getSession:async()=>({data:{session:null}}),onAuthStateChange(){},signUp:options.signUp,resend:options.resend},functions:{invoke:options.invoke||(async()=>({data:{...annotateStock(dinnerFixture(),['卵']),householdId:hh},error:null}))},removeChannel(){},channel(){const ch={on(event,filter,callback){subscriptions.push({filter,callback});return ch;},subscribe(){return ch;}};return ch;},from(table){
   const call={table,op:'select',filters:{}};const query={select(){return query;},order(){return query;},eq(k,v){call.filters[k]=v;return query;},insert(values){call.op='insert';call.values=values;return query;},update(values){call.op='update';call.values=values;return query;},delete(){call.op='delete';return query;},then(resolve,reject){calls.push(call);return Promise.resolve().then(async()=>{
    if(options.query)return options.query(call);
    if(options.fail&&call.op!=='select')return {error:{message:'保存失敗'}};
@@ -34,12 +34,61 @@ async function setup(options={}){
  }};
  const context=vm.createContext({document,window:{location:{hash:options.hash||'',origin:'http://localhost:3000'},scrollTo(){},addEventListener(){}},createClient:()=>db,createFeedback,URL,URLSearchParams,Intl,Date,console,setTimeout:()=>0,clearTimeout(){},setInterval(){},localStorage:{getItem(){return null;},setItem(){}},navigator:{clipboard:{writeText:async()=>{}}}});
  const api=await vm.runInContext('(async()=>{'+source+`
- return {setup(){activeUser={id:'u',email:'test@example.test'};householdId='${hh}';mealItems=[{id:'f1',name:'卵'}];shoppingLoaded=true;renderPantry();renderShopping();},state(){return {householdId,currentPage,dinnerPlans,shoppingItems,mealItems,dinnerBusy};},navigate,renderDinner,openRecipe,renderDish,resetScope,categoryFor,loadShopping,loadItems,subscribeHousehold,toggleShopping,editShopping,editFood,logout(){activeUser=null;householdId=null;resetScope();},switchScope(){householdId='other';resetScope();},addExternal(){},};
+ return {setup(){activeUser={id:'u',email:'test@example.test'};householdId='${hh}';mealItems=[{id:'f1',name:'卵'}];shoppingLoaded=true;renderPantry();renderShopping();},state(){return {householdId,currentPage,dinnerPlans,shoppingItems,mealItems,dinnerBusy,pendingPantryAdd,pantrySaving};},setFoodQuantity,addPantryItems,navigate,renderDinner,openRecipe,renderDish,resetScope,categoryFor,loadShopping,loadItems,subscribeHousehold,toggleShopping,editShopping,editFood,logout(){activeUser=null;householdId=null;resetScope();},switchScope(){householdId='other';resetScope();},addExternal(){},};
  })()`,context);
  api.setup();return {api,nodes,nav,calls,subscriptions,document};
 }
 const text=n=>[n.textContent,...(n.children||[]).map(text)].join('\n');
 const submit={preventDefault(){}};
+
+test('compact food row has three independent 44px-friendly amount controls and an edit action',async()=>{
+ const {api,nodes}=await setup();const row=nodes.get('items').children[0];assert.equal(row.className,'food-row');
+ const group=row.children[1];assert.equal(group.children.length,3);assert.equal(group.children[1].attributes['aria-pressed'],'true');
+ row.children[2].onclick();assert.equal(nodes.get('foodDialog').open,true);assert.equal(nodes.get('foodQuantity').value,'normal');
+ api.editFood();assert.equal(nodes.get('foodQuantity').value,'normal');
+});
+
+test('new food uses server duplicate check before insertion and defaults to normal quantity',async()=>{
+ const {nodes,calls}=await setup();nodes.get('food').value='  牛乳  ';nodes.get('foodCategory').value='auto';nodes.get('foodQuantity').value='normal';
+ await nodes.get('foodForm').onsubmit(submit);const call=calls.find(c=>c.rpc==='add_pantry_items');
+ assert.equal(call.args.p_household,hh);assert.equal(call.args.p_allow_duplicates,false);assert.equal(call.args.p_items[0].quantity_level,'normal');assert.equal(call.args.p_items[0].name,'牛乳');
+ assert.ok(!calls.some(c=>c.table==='ingredients'&&c.op==='insert'));
+});
+
+test('duplicate Back preserves input; cancel never submits an override; explicit Add does',async()=>{
+ for(const choice of ['duplicateBack','duplicateCancel','duplicateAdd']){
+  const {api,nodes,calls}=await setup({rpc:async(name,args)=>({data:args.p_allow_duplicates?{status:'saved',count:1}:{status:'duplicate',duplicates:['卵']},error:null})});
+  api.editFood();nodes.get('food').value=' 卵 ';nodes.get('foodCategory').value='auto';await nodes.get('foodForm').onsubmit(submit);
+  assert.equal(nodes.get('duplicateDialog').open,true);assert.ok(text(nodes.get('duplicateNames')).includes('卵'));await nodes.get(choice).onclick();
+  assert.equal(calls.filter(c=>c.rpc).length,choice==='duplicateAdd'?2:1);
+  if(choice==='duplicateBack'){assert.equal(nodes.get('foodDialog').open,true);assert.equal(nodes.get('food').value,' 卵 ');}
+  if(choice==='duplicateCancel'){assert.equal(nodes.get('duplicateDialog').open,false);assert.equal(api.state().pendingPantryAdd,null);}
+ }
+});
+
+test('photo batches share duplicate confirmation; returning retains the candidate input',async()=>{
+ const {api,nodes,calls}=await setup({rpc:async()=>({data:{status:'duplicate',duplicates:['牛乳']}})});
+ const candidate={name:'牛乳',category:'卵・乳製品',quantity_level:'normal'};
+ await api.addPantryItems([candidate,{...candidate,name:'にんじん'}],'photoDialog');
+ assert.equal(nodes.get('duplicateDialog').open,true);assert.ok(nodes.get('duplicateDescription').textContent.includes('登録全体'));
+ await nodes.get('duplicateBack').onclick();assert.equal(nodes.get('photoDialog').open,true);assert.equal(calls.filter(c=>c.rpc).length,1);
+});
+
+test('quantity updates use household RLS scope; failed saves retain the previous level',async()=>{
+ for(const fail of [false,true]){
+  const {api,calls,nodes}=await setup({query:async c=>c.op==='update'?{data:fail?null:[{id:'f1'}],error:fail?{message:'通信失敗'}:null}:{data:[{id:'f1',name:'卵',quantity_level:'high'}],error:null}});
+  await api.setFoodQuantity({id:'f1',name:'卵',quantity_level:'normal'},'high');const call=calls.find(c=>c.op==='update');
+  assert.equal(call.filters.household_id,hh);assert.equal(call.filters.id,'f1');assert.equal(call.values.quantity_level,'high');
+  assert.equal(api.state().mealItems[0].quantity_level,fail?undefined:'high');
+  if(fail)assert.ok(nodes.get('status').textContent.includes('保存できませんでした'));
+ }
+});
+
+test('household switch clears pending duplicate decisions and ignores late confirmation responses',async()=>{
+ let resolve;const {api,nodes,calls}=await setup({rpc:()=>new Promise(r=>resolve=r)});
+ const pending=api.addPantryItems([{name:'卵'}],'foodDialog');await new Promise(r=>setTimeout(r,0));api.switchScope();resolve({data:{status:'duplicate',duplicates:['卵']}});await pending;
+ assert.equal(api.state().pendingPantryAdd,null);assert.equal(nodes.get('duplicateDialog').open,false);await nodes.get('duplicateAdd').onclick();assert.equal(calls.filter(c=>c.rpc).length,1);
+});
 
 test('four screen navigation, contextual dialogs and no legacy meal section',async()=>{
  const {api,nodes,nav}=await setup();api.navigate('dinner');assert.equal(api.state().currentPage,'dinner');assert.equal(nav[2].attributes['aria-current'],'page');assert.equal(nodes.get('page-home').classList.contains('active'),false);

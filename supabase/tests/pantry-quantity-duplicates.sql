@@ -1,0 +1,37 @@
+begin;
+do $$ declare h uuid; users uuid[]; begin
+ select household_id into h from public.household_members group by household_id having count(*)>=2 limit 1;
+ if h is null then raise exception 'Shared household required'; end if;
+ select array_agg(user_id order by user_id) into users from public.household_members where household_id=h;
+ perform set_config('pantry.test_h',h::text,true);perform set_config('pantry.test_a',users[1]::text,true);perform set_config('pantry.test_b',users[2]::text,true);
+ if has_function_privilege('anon','public.add_pantry_items(uuid,jsonb,boolean)','execute') then raise exception 'Anonymous RPC access'; end if;
+end $$;
+set local role authenticated;
+do $$ declare h uuid:=current_setting('pantry.test_h')::uuid; a text:=current_setting('pantry.test_a'); b text:=current_setting('pantry.test_b'); label text:='＿＿量テスト＿'||gen_random_uuid()::text; canonical text; nid uuid; r jsonb; n integer; begin
+ perform set_config('request.jwt.claim.sub',a,true);
+ if public.ingredient_name_key('  ＡＢＣ　')<>'abc' or public.ingredient_name_key('ﾆﾝｼﾞﾝ')<>public.ingredient_name_key('ニンジン') then raise exception 'Normalization failed'; end if;
+ canonical:=public.ingredient_name_key(label);
+ r:=public.add_pantry_items(h,jsonb_build_array(jsonb_build_object('name',label)),false);
+ if r->>'status'<>'saved' then raise exception 'Initial insert failed'; end if;
+ select id into nid from public.ingredients where household_id=h and name=label;
+ if not exists(select 1 from public.ingredients where id=nid and quantity_level='normal') then raise exception 'Default not normal'; end if;
+ r:=public.add_pantry_items(h,jsonb_build_array(jsonb_build_object('name','  '||normalize(label,NFKC)||'  ')),false);
+ if r->>'status'<>'duplicate' then raise exception 'Duplicate not detected'; end if;
+ select count(*) into n from public.ingredients where household_id=h and public.ingredient_name_key(name)=canonical;
+ if n<>1 then raise exception 'Duplicate check wrote data'; end if;
+ r:=public.add_pantry_items(h,jsonb_build_array(jsonb_build_object('name',label)),true);
+ select count(*) into n from public.ingredients where household_id=h and public.ingredient_name_key(name)=canonical;
+ if n<>2 then raise exception 'Explicit duplicate override failed'; end if;
+ r:=public.add_pantry_items(h,jsonb_build_array(jsonb_build_object('name',label),jsonb_build_object('name',label||'_new')),false);
+ if r->>'status'<>'duplicate' or exists(select 1 from public.ingredients where household_id=h and name=label||'_new') then raise exception 'Batch wrote before confirmation'; end if;
+ perform set_config('request.jwt.claim.sub',b,true);
+ update public.ingredients set quantity_level='high' where id=nid;
+ if not exists(select 1 from public.ingredients where id=nid and quantity_level='high') then raise exception 'Partner quantity update failed'; end if;
+ begin update public.ingredients set quantity_level='invalid' where id=nid;raise exception 'Invalid quantity accepted';exception when check_violation then null;end;
+ perform set_config('request.jwt.claim.sub',gen_random_uuid()::text,true);
+ update public.ingredients set quantity_level='low' where id=nid;get diagnostics n=row_count;
+ if n<>0 then raise exception 'Foreign household update allowed'; end if;
+ begin perform public.add_pantry_items(h,jsonb_build_array(jsonb_build_object('name',label)),true);raise exception 'Foreign household RPC allowed';exception when insufficient_privilege then null;end;
+end $$;
+rollback;
+select 'PASS: normalization, duplicate check/override, atomic batch, default quantity, partner update, RLS, rollback' as pantry_checks;

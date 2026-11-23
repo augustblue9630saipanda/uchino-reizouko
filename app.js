@@ -13,6 +13,8 @@ let activeUser=null,householdId=null,currentPage='home',mealItems=null,shoppingI
 let pantryRequest=0,shoppingRequest=0,scopeVersion=0,dinnerVersion=0,dinnerBusy=false,dinnerPlans=[],selectedPlan=0;
 let categoryFilter='すべて',inviteValue='',photoURL=null,selectedFile=null,busy=false,channel=null,toastTimer;
 const shoppingLocks=new Set();
+const quantityLevels={low:'少',normal:'並',high:'多'},quantityLocks=new Set();
+let pendingPantryAdd=null,pantrySaving=false;
 
 function el(tag,className='',text=''){const node=document.createElement(tag);if(className)node.className=className;if(text)node.textContent=text;return node;}
 function icon(name){const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');const use=document.createElementNS('http://www.w3.org/2000/svg','use');use.setAttribute('href','#i-'+name);svg.setAttribute('aria-hidden','true');svg.append(use);return svg;}
@@ -25,7 +27,7 @@ function message(text){
 function openSheet(id){document.querySelectorAll('dialog[open]').forEach(d=>d.close());const dialog=$(id);dialog.querySelectorAll('[data-dialog-status]').forEach(n=>n.remove());dialog.showModal();dialog.scrollTop=0;}
 function closeSheets(){document.querySelectorAll('dialog[open]').forEach(d=>d.close());}
 document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>{const d=$(b.dataset.close);if(!d.classList.contains('is-saving'))d.close();});
-document.querySelectorAll('dialog').forEach(d=>d.addEventListener('click',e=>{if(e.target===d&&!d.classList.contains('is-saving')){const r=d.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)d.close();}}));
+document.querySelectorAll('dialog').forEach(d=>d.addEventListener('click',e=>{if(e.target===d&&!d.classList.contains('is-saving')&&!d.classList.contains('requires-choice')){const r=d.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)d.close();}}));
 
 function navigate(page){
  if(!['home','fridge','dinner','shopping','feedback'].includes(page))return;
@@ -61,9 +63,11 @@ function renderPantry(){
  $('stockSummary').textContent=mealItems===null?'食材を読み込み中…':stock.length+'種類の食材が、出番を待っています。';
  $('homeStock').textContent=mealItems===null?'—':String(stock.length);$('items').replaceChildren();
  for(const item of filtered){
-  const c=categoryFor(item),card=button('','food-card',()=>editFood(item));card.setAttribute('aria-label',item.name+'を編集');
-  const text=el('span');text.append(el('span','food-name',item.name),el('span','food-category',c));
-  card.append(el('span','food-glyph',glyphs[c]),text,el('span','edit-mark','⋯'));$('items').append(card);
+  const card=el('div','food-row'),name=el('span','food-row-name',item.name);name.title=item.name;
+  const amount=el('div','quantity-switch');amount.setAttribute('role','group');amount.setAttribute('aria-label',item.name+'の量');
+  for(const [value,label] of Object.entries(quantityLevels)){const b=button(label,'quantity-button',()=>setFoodQuantity(item,value));b.setAttribute('aria-label',item.name+'の量を「'+label+'」にする');b.setAttribute('aria-pressed',String((item.quantity_level||'normal')===value));b.disabled=quantityLocks.has(item.id);amount.append(b);}
+  const more=button('…','food-more',()=>editFood(item));more.setAttribute('aria-label',item.name+'の編集・削除');
+  card.append(name,amount,more);$('items').append(card);
  }
  $('fridgeEmpty').classList.toggle('hidden',mealItems===null||stock.length>0);
  if(stock.length&&!filtered.length)$('items').append(el('p','caption','該当する食材がありません。'));
@@ -75,13 +79,14 @@ function renderPantry(){
 $('foodSearch').oninput=renderPantry;
 function editFood(item=null){
  $('foodId').value=item?.id||'';$('food').value=item?.name||'';$('foodCategory').value=item?categoryFor(item):'auto';
+ $('foodQuantity').value=item?.quantity_level||'normal';
  $('foodDialogTitle').textContent=item?'食材を編集':'食材を追加';$('deleteFood').classList.toggle('hidden',!item);openSheet('foodDialog');
 }
 $('addFood').onclick=()=>editFood();$('emptyAddFood').onclick=()=>editFood();
 async function loadItems(){
  if(!householdId)return;
  const scope=scopeVersion,target=householdId,request=++pantryRequest;
- const {data,error}=await db.from('ingredients').select('id,name,category').eq('household_id',target).order('created_at',{ascending:false});
+ const {data,error}=await db.from('ingredients').select('id,name,category,quantity_level').eq('household_id',target).order('created_at',{ascending:false});
  if(scope!==scopeVersion||request!==pantryRequest)return;
  if(error){$('stockSummary').textContent='読み込めませんでした。もう一度画面を開いてください。';throw error;}
  const next=data||[];
@@ -89,12 +94,47 @@ async function loadItems(){
  mealItems=next;renderPantry();
 }
 $('foodForm').onsubmit=async e=>{
- e.preventDefault();if(!householdId||!activeUser)return;
+ e.preventDefault();if(!householdId||!activeUser||pantrySaving)return;
  const name=$('food').value.trim(),id=$('foodId').value,category=$('foodCategory').value==='auto'?categoryFor({name}):$('foodCategory').value;
- if(!name)return;const scope=scopeVersion,target=householdId;$('saveFood').disabled=true;
- try{const query=db.from('ingredients');const {error}=id?await query.update({name,category}).eq('id',id).eq('household_id',target):await query.insert({household_id:target,name,category});if(error)throw error;if(scope!==scopeVersion)return;$('foodDialog').close();await loadItems();message(id?'食材を更新しました。':'食材を冷蔵庫に追加しました。');}
+ const quantity_level=$('foodQuantity').value;
+ if(!name||!Object.hasOwn(quantityLevels,quantity_level))return;
+ if(!id){await addPantryItems([{name,category,quantity_level}],'foodDialog');return;}
+ const scope=scopeVersion,target=householdId;$('saveFood').disabled=true;
+ try{const {error}=await db.from('ingredients').update({name,category,quantity_level}).eq('id',id).eq('household_id',target);if(error)throw error;if(scope!==scopeVersion)return;$('foodDialog').close();await loadItems();message('食材を更新しました。');}
  catch(e){message('保存できませんでした：'+e.message);}finally{$('saveFood').disabled=false;}
 };
+async function setFoodQuantity(item,value){
+ if(!activeUser||!householdId||quantityLocks.has(item.id)||!Object.hasOwn(quantityLevels,value)||(item.quantity_level||'normal')===value)return;
+ const scope=scopeVersion,target=householdId;quantityLocks.add(item.id);renderPantry();
+ try{const {data,error}=await db.from('ingredients').update({quantity_level:value}).eq('id',item.id).eq('household_id',target).select('id');if(error)throw error;if(!data?.length)throw Error('食材が削除されたか、共有先が変わっています。');if(scope===scopeVersion)await loadItems();}
+ catch(e){if(scope===scopeVersion)message('量を保存できませんでした：'+e.message);}finally{quantityLocks.delete(item.id);if(scope===scopeVersion)renderPantry();}
+}
+function pantryBusy(on){
+ pantrySaving=on;for(const id of ['saveFood','saveCandidates','duplicateAdd','duplicateCancel','duplicateBack'])$(id).disabled=on;
+ for(const id of ['foodDialog','photoDialog','duplicateDialog'])$(id).classList.toggle('is-saving',on);
+}
+async function addPantryItems(items,sourceDialog,allowDuplicates=false){
+ if(!activeUser||!householdId||pantrySaving)return;
+ const scope=scopeVersion,target=householdId;let saved=false;pantryBusy(true);
+ try{
+  const {data,error}=await db.rpc('add_pantry_items',{p_household:target,p_items:items,p_allow_duplicates:allowDuplicates});
+  if(error)throw error;if(scope!==scopeVersion||target!==householdId)return;
+  if(data?.status==='duplicate'&&Array.isArray(data.duplicates)){
+   pendingPantryAdd={items,sourceDialog,scope,target};$('duplicateNames').replaceChildren();for(const name of data.duplicates)$('duplicateNames').append(el('li','',name));
+   $('duplicateDescription').textContent=items.length>1?'同じ名前の食材があります。「別の項目として追加」で今回の候補をすべて登録します。「追加しない」は今回の登録全体をキャンセルします。':'すでに同じ名前の食材があります。別の項目として追加しますか？';
+   openSheet('duplicateDialog');return;
+  }
+  if(data?.status!=='saved')throw Error('保存結果を確認できませんでした。');
+  saved=true;
+  pendingPantryAdd=null;$(sourceDialog).close();$('duplicateDialog').close();if(sourceDialog==='photoDialog')clearPhoto();await loadItems();message(data.count+'件の食材を登録しました。');
+ }catch(e){if(scope===scopeVersion)message(saved?'登録は完了しました。一覧を開き直してください。':'保存できませんでした：'+e.message);}finally{if(scope===scopeVersion)pantryBusy(false);}
+}
+$('duplicateAdd').onclick=()=>{const p=pendingPantryAdd;if(p&&p.scope===scopeVersion&&p.target===householdId)return addPantryItems(p.items,p.sourceDialog,true);};
+$('duplicateCancel').onclick=()=>{if(pantrySaving)return;pendingPantryAdd=null;$('duplicateDialog').close();message('今回の登録をキャンセルしました。');};
+$('duplicateBack').onclick=()=>{if(pantrySaving)return;const p=pendingPantryAdd;pendingPantryAdd=null;if(p&&p.scope===scopeVersion)openSheet(p.sourceDialog);};
+$('duplicateDialog').addEventListener('cancel',e=>{e.preventDefault();if(!pantrySaving)$('duplicateBack').onclick();});
+$('foodDialog').addEventListener('cancel',e=>{if(pantrySaving)e.preventDefault();});
+$('photoDialog').addEventListener('cancel',e=>{if(pantrySaving)e.preventDefault();});
 $('deleteFood').onclick=async()=>{
  const id=$('foodId').value;if(!id||!householdId)return;
  const target=householdId,scope=scopeVersion;$('deleteFood').disabled=true;
@@ -222,14 +262,13 @@ $('recognize').onclick=async()=>{
  try{const image=await fileToJpeg(selectedFile);if(image.image.length>5600000)throw Error('写真が大きすぎます。');const {data,error}=await db.functions.invoke('recognize-ingredients',{body:image});if(scope!==scopeVersion)return;if(error)throw Error('食材を読み取れませんでした。時間をおいて試してください。');if(data?.error)throw Error(data.error);if(!Array.isArray(data?.ingredients))throw Error('AIの回答を読み取れませんでした。');$('candidates').replaceChildren();for(const name of data.ingredients)if(typeof name==='string')addCandidateRow(name.slice(0,100));$('resultBox').classList.remove('hidden');message(data.ingredients.length?'読み取った名前を確認して登録してください。':'候補を手動で追加できます。');}catch(e){message(e.message);}finally{busy=false;$('recognize').disabled=false;$('recognize').textContent='AIで食材を読み取る';}
 };
 $('saveCandidates').onclick=async()=>{
- if(busy||!householdId)return;
+ if(busy||pantrySaving||!householdId)return;
  const names=[...new Set([...$('candidates').querySelectorAll('.candidate')].filter(r=>r.querySelector('[type=checkbox]').checked).map(r=>r.querySelector('[type=text]').value.trim()).filter(Boolean))];if(!names.length){message('登録する食材を選んでください。');return;}
- const scope=scopeVersion,target=householdId;busy=true;$('saveCandidates').disabled=true;
- try{const {error}=await db.from('ingredients').insert(names.map(name=>({household_id:target,name,category:categoryFor({name})})));if(error)throw error;if(scope!==scopeVersion)return;await loadItems();clearPhoto();$('photoDialog').close();message(names.length+'件の食材を登録しました。');}catch(e){message('保存できませんでした：'+e.message);}finally{busy=false;$('saveCandidates').disabled=false;}
+ await addPantryItems(names.map(name=>({name,category:categoryFor({name}),quantity_level:'normal'})),'photoDialog');
 };
 
 function savedKey(){return activeUser?'reizouko-household-'+activeUser.id:'';}
-function resetScope(){scopeVersion++;pantryRequest++;shoppingRequest++;mealItems=null;shoppingItems=[];shoppingLoaded=false;shoppingLocks.clear();closeSheets();clearPhoto();resetDinner();renderPantry();renderShopping();feedback.reset();feedback.sync();if(channel){db.removeChannel(channel);channel=null;}}
+function resetScope(){scopeVersion++;pantryRequest++;shoppingRequest++;mealItems=null;shoppingItems=[];shoppingLoaded=false;shoppingLocks.clear();quantityLocks.clear();pendingPantryAdd=null;pantryBusy(false);closeSheets();clearPhoto();resetDinner();renderPantry();renderShopping();feedback.reset();feedback.sync();if(channel){db.removeChannel(channel);channel=null;}}
 function show(user){$('authBox').classList.toggle('hidden',!!user);$('appBox').classList.toggle('hidden',!user);$('bottomNav').classList.toggle('hidden',!user);$('settingsOpen').classList.toggle('hidden',!user);$('account').textContent=user?'ログイン中：'+user.email:'';feedback.sync();}
 async function getHouseholds(){const {data,error}=await db.from('households').select('id,name').order('created_at',{ascending:true});if(error)throw error;return data||[];}
 async function refreshHouseholds(preferredId){
