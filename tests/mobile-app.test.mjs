@@ -34,7 +34,7 @@ async function setup(options={}){
  }};
  const context=vm.createContext({document,window:{location:{hash:options.hash||'',origin:'http://localhost:3000'},scrollTo(){},addEventListener(){}},createClient:()=>db,createFeedback,URL,URLSearchParams,Intl,Date,console,setTimeout:()=>0,clearTimeout(){},setInterval(){},localStorage:{getItem(){return null;},setItem(){}},navigator:{clipboard:{writeText:async()=>{}}}});
  const api=await vm.runInContext('(async()=>{'+source+`
- return {setup(){activeUser={id:'u',email:'test@example.test'};householdId='${hh}';mealItems=[{id:'f1',name:'卵'}];shoppingLoaded=true;renderPantry();renderShopping();},state(){return {householdId,currentPage,dinnerPlans,shoppingItems,mealItems,dinnerBusy,pendingPantryAdd,pantrySaving};},setFoodQuantity,addPantryItems,navigate,renderDinner,openRecipe,renderDish,resetScope,categoryFor,loadShopping,loadItems,subscribeHousehold,toggleShopping,editShopping,editFood,logout(){activeUser=null;householdId=null;resetScope();},switchScope(){householdId='other';resetScope();},addExternal(){},};
+ return {setup(){activeUser={id:'u',email:'test@example.test'};householdId='${hh}';mealItems=[{id:'f1',name:'卵'}];shoppingLoaded=true;renderPantry();renderShopping();},state(){return {householdId,currentPage,dinnerPlans,shoppingItems,mealItems,dinnerBusy,pendingPantryAdd,pantrySaving};},setStock(items){mealItems=items;renderPantry();},renderFilters,renderPantry,setFoodQuantity,addPantryItems,navigate,renderDinner,openRecipe,renderDish,resetScope,categoryFor,loadShopping,loadItems,subscribeHousehold,toggleShopping,editShopping,editFood,logout(){activeUser=null;householdId=null;resetScope();},switchScope(){householdId='other';resetScope();},addExternal(){},};
  })()`,context);
  api.setup();return {api,nodes,nav,calls,subscriptions,document};
 }
@@ -42,7 +42,7 @@ const text=n=>[n.textContent,...(n.children||[]).map(text)].join('\n');
 const submit={preventDefault(){}};
 
 test('compact food row has three independent 44px-friendly amount controls and an edit action',async()=>{
- const {api,nodes}=await setup();const row=nodes.get('items').children[0];assert.equal(row.className,'food-row');
+ const {api,nodes}=await setup();const row=nodes.get('items').children[0].children[1].children[0];assert.equal(row.className,'food-row');
  const group=row.children[1];assert.equal(group.children.length,3);assert.equal(group.children[1].attributes['aria-pressed'],'true');
  row.children[2].onclick();assert.equal(nodes.get('foodDialog').open,true);assert.equal(nodes.get('foodQuantity').value,'normal');
  api.editFood();assert.equal(nodes.get('foodQuantity').value,'normal');
@@ -151,4 +151,23 @@ test('resend failures allow retry and expired links show recovery instructions w
  const {nodes}=await setup({hash:'#error=access_denied&error_code=otp_expired&access_token=DO_NOT_DISPLAY',resend:async()=>({error:{status:429,message:'limit'}})});
  assert.ok(nodes.get('authNotice').textContent.includes('期限切れ'));assert.ok(!nodes.get('authNotice').textContent.includes('DO_NOT_DISPLAY'));
  nodes.get('email').value='wife@example.test';await nodes.get('resendConfirmation').onclick();assert.equal(nodes.get('resendConfirmation').disabled,false);assert.ok(nodes.get('authNotice').textContent.includes('しばらく'));
+});
+
+
+test('pantry groups have counts, preserve collapse through filtering, and reset on household change',async()=>{
+ const {api,nodes}=await setup();
+ api.setStock([{id:'a',name:'にんじん'},{id:'b',name:'トマト'},{id:'c',name:'牛乳'},{id:'d',name:'特製だれ',category:'その他'}]);
+ let groups=nodes.get('items').children;
+ assert.deepEqual(groups.map(g=>g.children[0].children[0].textContent),['野菜・果物','卵・乳製品','その他']);
+ assert.equal(groups[0].children[0].children[1].textContent,'2件');
+ assert.ok(groups.every(g=>g.tagName==='DETAILS'&&g.open));
+ groups[0].isConnected=true;groups[0].open=false;groups[0].ontoggle();
+ api.renderPantry();assert.equal(nodes.get('items').children[0].open,false);
+ nodes.get('foodSearch').value='牛乳';nodes.get('foodSearch').oninput();
+ assert.equal(nodes.get('items').children.length,1);assert.ok(text(nodes.get('items')).includes('1件'));
+ nodes.get('foodSearch').value='';api.renderFilters();
+ nodes.get('categoryFilters').children.find(b=>b.textContent==='その他').onclick();
+ assert.equal(nodes.get('items').children.length,1);assert.ok(text(nodes.get('items')).includes('特製だれ'));
+ nodes.get('categoryFilters').children[0].onclick();assert.equal(nodes.get('items').children[0].open,false);
+ api.switchScope();api.setStock([{id:'z',name:'にんじん'}]);assert.equal(nodes.get('items').children[0].open,true);
 });

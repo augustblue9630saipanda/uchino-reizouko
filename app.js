@@ -13,6 +13,7 @@ let activeUser=null,householdId=null,currentPage='home',mealItems=null,shoppingI
 let pantryRequest=0,shoppingRequest=0,scopeVersion=0,dinnerVersion=0,dinnerBusy=false,dinnerPlans=[],selectedPlan=0;
 let categoryFilter='すべて',inviteValue='',photoURL=null,selectedFile=null,busy=false,channel=null,toastTimer;
 const shoppingLocks=new Set();
+const collapsedPantryCategories=new Set();
 const quantityLevels={low:'少',normal:'並',high:'多'},quantityLocks=new Set();
 let pendingPantryAdd=null,pantrySaving=false;
 
@@ -62,12 +63,23 @@ function renderPantry(){
  const filtered=stock.filter(i=>(categoryFilter==='すべて'||categoryFor(i)===categoryFilter)&&i.name.toLowerCase().includes(search));
  $('stockSummary').textContent=mealItems===null?'食材を読み込み中…':stock.length+'種類の食材が、出番を待っています。';
  $('homeStock').textContent=mealItems===null?'—':String(stock.length);$('items').replaceChildren();
+ const groups=new Map();
+ for(const category of categories){
+  const items=filtered.filter(item=>categoryFor(item)===category);if(!items.length)continue;
+  const section=el('details','pantry-category');section.open=!collapsedPantryCategories.has(category);
+  const summary=el('summary','pantry-category-heading');
+  summary.append(el('span','pantry-category-name',category),el('span','pantry-category-count',items.length+'件'));
+  section.append(summary);
+  // Ignore delayed toggle events from sections replaced by a newer render.
+  section.ontoggle=()=>{if(!section.isConnected)return;section.open?collapsedPantryCategories.delete(category):collapsedPantryCategories.add(category);};
+  const list=el('div','pantry-category-list');section.append(list);groups.set(category,list);$('items').append(section);
+ }
  for(const item of filtered){
   const card=el('div','food-row'),name=el('span','food-row-name',item.name);name.title=item.name;
   const amount=el('div','quantity-switch');amount.setAttribute('role','group');amount.setAttribute('aria-label',item.name+'の量');
   for(const [value,label] of Object.entries(quantityLevels)){const b=button(label,'quantity-button',()=>setFoodQuantity(item,value));b.setAttribute('aria-label',item.name+'の量を「'+label+'」にする');b.setAttribute('aria-pressed',String((item.quantity_level||'normal')===value));b.disabled=quantityLocks.has(item.id);amount.append(b);}
   const more=button('…','food-more',()=>editFood(item));more.setAttribute('aria-label',item.name+'の編集・削除');
-  card.append(name,amount,more);$('items').append(card);
+  card.append(name,amount,more);groups.get(categoryFor(item)).append(card);
  }
  $('fridgeEmpty').classList.toggle('hidden',mealItems===null||stock.length>0);
  if(stock.length&&!filtered.length)$('items').append(el('p','caption','該当する食材がありません。'));
@@ -268,7 +280,7 @@ $('saveCandidates').onclick=async()=>{
 };
 
 function savedKey(){return activeUser?'reizouko-household-'+activeUser.id:'';}
-function resetScope(){scopeVersion++;pantryRequest++;shoppingRequest++;mealItems=null;shoppingItems=[];shoppingLoaded=false;shoppingLocks.clear();quantityLocks.clear();pendingPantryAdd=null;pantryBusy(false);closeSheets();clearPhoto();resetDinner();renderPantry();renderShopping();feedback.reset();feedback.sync();if(channel){db.removeChannel(channel);channel=null;}}
+function resetScope(){collapsedPantryCategories.clear();scopeVersion++;pantryRequest++;shoppingRequest++;mealItems=null;shoppingItems=[];shoppingLoaded=false;shoppingLocks.clear();quantityLocks.clear();pendingPantryAdd=null;pantryBusy(false);closeSheets();clearPhoto();resetDinner();renderPantry();renderShopping();feedback.reset();feedback.sync();if(channel){db.removeChannel(channel);channel=null;}}
 function show(user){$('authBox').classList.toggle('hidden',!!user);$('appBox').classList.toggle('hidden',!user);$('bottomNav').classList.toggle('hidden',!user);$('settingsOpen').classList.toggle('hidden',!user);$('account').textContent=user?'ログイン中：'+user.email:'';feedback.sync();}
 async function getHouseholds(){const {data,error}=await db.from('households').select('id,name').order('created_at',{ascending:true});if(error)throw error;return data||[];}
 async function refreshHouseholds(preferredId){
