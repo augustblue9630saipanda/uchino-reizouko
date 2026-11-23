@@ -34,7 +34,7 @@ async function setup(options={}){
  }};
  const context=vm.createContext({document,window:{location:{hash:options.hash||'',origin:'http://localhost:3000'},scrollTo(){},addEventListener(){}},createClient:()=>db,createFeedback,URL,URLSearchParams,Intl,Date,console,setTimeout:()=>0,clearTimeout(){},setInterval(){},localStorage:{getItem(){return null;},setItem(){}},navigator:{clipboard:{writeText:async()=>{}}}});
  const api=await vm.runInContext('(async()=>{'+source+`
- return {setup(){activeUser={id:'u',email:'test@example.test'};householdId='${hh}';mealItems=[{id:'f1',name:'卵'}];shoppingLoaded=true;renderPantry();renderShopping();},state(){return {householdId,currentPage,dinnerPlans,shoppingItems,mealItems,dinnerBusy,pendingPantryAdd,pantrySaving};},setStock(items){mealItems=items;renderPantry();},renderFilters,renderPantry,setFoodQuantity,addPantryItems,navigate,renderDinner,openRecipe,renderDish,resetScope,categoryFor,loadShopping,loadItems,subscribeHousehold,toggleShopping,editShopping,editFood,logout(){activeUser=null;householdId=null;resetScope();},switchScope(){householdId='other';resetScope();},addExternal(){},};
+ return {setup(){activeUser={id:'u',email:'test@example.test'};householdId='${hh}';mealItems=[{id:'f1',name:'卵'}];shoppingLoaded=true;renderPantry();renderShopping();},state(){return {householdId,currentPage,dinnerPlans,shoppingItems,mealItems,dinnerBusy,pendingPantryAdd,pantrySaving};},setStock(items){mealItems=items;renderPantry();},renderFilters,renderPantry,setFoodQuantity,addPantryItems,navigate,renderDinner,openRecipe,renderDish,resetScope,categoryFor,foodGlyph,loadShopping,loadItems,subscribeHousehold,toggleShopping,editShopping,editFood,logout(){activeUser=null;householdId=null;resetScope();},switchScope(){householdId='other';resetScope();},addExternal(){},};
  })()`,context);
  api.setup();return {api,nodes,nav,calls,subscriptions,document};
 }
@@ -170,4 +170,17 @@ test('pantry groups have counts, preserve collapse through filtering, and reset 
  assert.equal(nodes.get('items').children.length,1);assert.ok(text(nodes.get('items')).includes('特製だれ'));
  nodes.get('categoryFilters').children[0].onclick();assert.equal(nodes.get('items').children[0].open,false);
  api.switchScope();api.setStock([{id:'z',name:'にんじん'}]);assert.equal(nodes.get('items').children[0].open,true);
+});
+
+
+test('ingredient icons prefer normalized food names and fall back to the existing category glyph',async()=>{
+ const {api,nodes}=await setup();
+ for(const [name,glyph] of [['にんじん','🥕'],['ニンジン','🥕'],['ﾆﾝｼﾞﾝ','🥕'],['キャベツ','🥬'],['卵','🥚'],['牛乳','🥛'],['しめじ','🍄']])assert.equal(api.foodGlyph({name}),glyph);
+ assert.equal(api.foodGlyph({name:'未分類の食材',category:'肉・魚'}),'🐟');
+ assert.equal(api.foodGlyph({name:'未分類の食材'}),'🧺');
+ const row=nodes.get('items').children[0].children[1].children[0];
+ assert.equal(row.children[0].children[0].textContent,'🥚');
+ assert.equal(row.children[0].children[0].attributes['aria-hidden'],'true');
+ assert.equal(row.children[0].children[1].textContent,'卵');
+ assert.equal(row.children[1].children.length,3);
 });

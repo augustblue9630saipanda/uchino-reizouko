@@ -9,6 +9,22 @@ const db=createClient(url,key);
 const $=id=>document.getElementById(id);
 const categories=['野菜・果物','肉・魚','卵・乳製品','主食','その他'];
 const glyphs={'野菜・果物':'🥬','肉・魚':'🐟','卵・乳製品':'🥚','主食':'🍚','その他':'🧺'};
+// Match the ingredient name first; keep the original category glyph as fallback.
+const foodGlyphRules=[
+ [/にんじん|人参/,'🥕'],[/きゃべつ|白菜|はくさい|れたす|ほうれん|小松菜/,'🥬'],
+ [/ぶろっこり/,'🥦'],[/とまと/,'🍅'],[/なす|茄子/,'🍆'],[/きゅうり/,'🥒'],
+ [/じゃが|ぽてと/,'🥔'],[/さつまいも/,'🍠'],[/玉ねぎ|たまねぎ/,'🧅'],[/とうもろこし|こーん/,'🌽'],
+ [/しめじ|えのき|えりんぎ|きのこ|しいたけ|椎茸|まいたけ/,'🍄'],[/あぼかど/,'🥑'],
+ [/りんご|林檎/,'🍎'],[/ばなな/,'🍌'],[/みかん|おれんじ/,'🍊'],[/れもん/,'🍋'],[/いちご|苺/,'🍓'],[/ぶどう|葡萄/,'🍇'],
+ [/たまご|卵|玉子/,'🥚'],[/牛乳|みるく/,'🥛'],[/ちーず/,'🧀'],[/ばたー/,'🧈'],
+ [/べーこん/,'🥓'],[/鶏|とり肉|鳥肉|ちきん/,'🍗'],[/豚|牛肉|ひき肉|挽き肉/,'🥩'],
+ [/えび|海老/,'🦐'],[/いか/,'🦑'],[/たこ|蛸/,'🐙'],[/鮭|さけ|鯖|さば|まぐろ|魚|しらす|鯛|たい|つな/,'🐟'],
+ [/ぱん/,'🍞'],[/ぱすた|すぱげ/,'🍝'],[/うどん|そば|麺/,'🍜'],[/ご飯|ごはん|米/,'🍚']
+];
+function foodGlyph(item){
+ const name=item.name.normalize('NFKC').toLowerCase().replace(/[ァ-ヶ]/g,c=>String.fromCharCode(c.charCodeAt(0)-0x60));
+ return foodGlyphRules.find(([pattern])=>pattern.test(name))?.[1]||glyphs[categoryFor(item)];
+}
 let activeUser=null,householdId=null,currentPage='home',mealItems=null,shoppingItems=[],shoppingLoaded=false;
 let pantryRequest=0,shoppingRequest=0,scopeVersion=0,dinnerVersion=0,dinnerBusy=false,dinnerPlans=[],selectedPlan=0;
 let categoryFilter='すべて',inviteValue='',photoURL=null,selectedFile=null,busy=false,channel=null,toastTimer;
@@ -75,7 +91,9 @@ function renderPantry(){
   const list=el('div','pantry-category-list');section.append(list);groups.set(category,list);$('items').append(section);
  }
  for(const item of filtered){
-  const card=el('div','food-row'),name=el('span','food-row-name',item.name);name.title=item.name;
+  const card=el('div','food-row'),name=el('span','food-row-name');name.title=item.name;
+  const glyph=el('span','food-row-glyph',foodGlyph(item));glyph.setAttribute('aria-hidden','true');
+  name.append(glyph,el('span','food-row-label',item.name));
   const amount=el('div','quantity-switch');amount.setAttribute('role','group');amount.setAttribute('aria-label',item.name+'の量');
   for(const [value,label] of Object.entries(quantityLevels)){const b=button(label,'quantity-button',()=>setFoodQuantity(item,value));b.setAttribute('aria-label',item.name+'の量を「'+label+'」にする');b.setAttribute('aria-pressed',String((item.quantity_level||'normal')===value));b.disabled=quantityLocks.has(item.id);amount.append(b);}
   const more=button('…','food-more',()=>editFood(item));more.setAttribute('aria-label',item.name+'の編集・削除');

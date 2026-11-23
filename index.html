@@ -14,7 +14,7 @@
 <title>うちの暮らし</title><link rel="stylesheet" href="styles.css?v=20261118.pwa1">
 <link rel="stylesheet" href="pwa.css?v=20261118.1">
 <link rel="stylesheet" href="feedback.css?v=20261120.1">
-<link rel="stylesheet" href="pantry.css?v=20261123.2">
+<link rel="stylesheet" href="pantry.css?v=20261123.3">
 </head>
 <body>
 <svg class="sprite" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><defs>
@@ -70,5 +70,5 @@
 <dialog id="feedbackExportDialog" class="sheet" aria-labelledby="feedbackExportTitle"><div class="sheet-header"><div><span class="eyebrow">IDEAS TO SHARE</span><h2 id="feedbackExportTitle">ChatGPTに渡すテキスト</h2></div><button class="icon-button" data-close="feedbackExportDialog" aria-label="テキスト出力を閉じる"><svg><use href="#i-close"/></svg></button></div><p class="caption">コピーしてChatGPTに貼り付けてください。画像は含まれません。必要な画像は別途添付してください。</p><textarea id="feedbackExportText" readonly rows="12" aria-label="ご意見メモの出力テキスト"></textarea><button id="feedbackCopyExport" class="primary full">テキストをコピー</button><button id="feedbackSelectText" class="text-button full">全選択（手動でコピー）</button></dialog>
 <dialog id="feedbackDeleteDialog" class="sheet" aria-labelledby="feedbackDeleteTitle"><div class="sheet-header"><h2 id="feedbackDeleteTitle">削除の確認</h2><button class="icon-button" data-close="feedbackDeleteDialog" aria-label="削除を取り消す"><svg><use href="#i-close"/></svg></button></div><p id="feedbackDeleteText"></p><button id="feedbackDeleteConfirm" class="primary full" type="button">削除する</button><button class="text-button full" data-close="feedbackDeleteDialog" type="button">やめる</button></dialog>
 <dialog id="duplicateDialog" class="sheet requires-choice" aria-labelledby="duplicateTitle"><div class="sheet-header"><div><span class="eyebrow">A LITTLE CHECK</span><h2 id="duplicateTitle">同じ食材があるみたい。</h2></div></div><p id="duplicateDescription"></p><ul id="duplicateNames" class="duplicate-names"></ul><button id="duplicateAdd" class="primary full" type="button">別の項目として追加</button><button id="duplicateCancel" class="secondary full" type="button">追加しない</button><button id="duplicateBack" class="text-button full" type="button">戻る</button></dialog>
-<script type="module" src="app.js?v=20261123.pantry2"></script>
+<script type="module" src="app.js?v=20261123.pantry3"></script>
 </body></html>

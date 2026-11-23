@@ -1,7 +1,9 @@
 /* Compact rows and independent 44px touch targets. */
 #items.food-grid{display:flex;flex-direction:column;gap:10px}
 .food-row{display:flex;align-items:center;gap:4px;height:44px;min-height:44px;padding:0;box-shadow:inset 0 -1px var(--line)}
-.food-row-name{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:14px;font-weight:600}
+.food-row-name{display:flex;align-items:center;gap:6px;flex:1;min-width:0;overflow:hidden;font-size:14px;font-weight:600}
+.food-row-glyph{flex:0 0 24px;width:24px;font-size:22px;line-height:1;text-align:center}
+.food-row-label{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .quantity-switch{display:flex;flex-shrink:0;gap:0;border:0;border-radius:0;padding:0}
 .quantity-button{width:44px;min-height:44px;padding:0;height:44px;border-radius:6px;font-size:13px;color:#73766a}
 .quantity-button[aria-pressed=true]{background:#fffefb;color:#526e55;font-weight:700;box-shadow:none;background:#e8eddf}
