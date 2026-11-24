@@ -140,3 +140,23 @@ test('preview validates supplied sample food, normal endpoint continues to rejec
  }
  const h=harness();assert.equal((await h.handler(h.request({inventory:['卵']}))).status,400);
 });
+
+
+test('preferences and RLS stock metadata reach Gemini, never trusting browser inventory',async()=>{
+ const h=harness({rows:[{name:'卵',quantity_level:'low',registered_on:'1970-01-01'},{name:'玉ねぎ',quantity_level:'high',registered_on:null}]});
+ const r=await h.handler(h.request({householdId,requestText:'カレー',moods:['お肉','時短'],purchaseMode:'flexible'}));assert.equal(r.status,200);
+ const input=JSON.parse(JSON.parse(h.calls.at(-1).init.body).contents[0].parts[0].text);
+ assert.equal(input.requestText,'カレー');assert.deepEqual(input.moods,['お肉','時短']);assert.equal(input.purchaseMode,'flexible');assert.equal(input.stock[0].quantityLevel,'少');assert.equal(input.stock[1].elapsedDays,null);
+ assert.ok(h.calls.find(c=>c.url.includes('/ingredients')).url.includes('registered_on'));
+ for(const preferences of [{requestText:5},{moods:['bad']},{purchaseMode:'bad'}]){const x=harness();assert.equal((await x.handler(x.request({householdId,...preferences}))).status,400);assert.equal(x.calls.length,0);}
+});
+
+test('pantry mode never labels missing ingredients as no shopping, even if model calls food seasoning',async()=>{
+ const output=dinnerFixture();output.patterns[0].dishes[0].ingredients[1].kind='調味料';
+ const h=harness({output});const data=await (await h.handler(h.request({householdId,purchaseMode:'pantry'}))).json();
+ assert.equal(data.patterns.length,0);assert.match(data.notice,/提案できません/);
+ const all=harness({rows:[{name:'卵'},{name:'しめじ'}]});const d=await (await all.handler(all.request({householdId,purchaseMode:'pantry'}))).json();assert.equal(d.patterns.length,3);assert.ok(d.patterns.every(p=>p.missingIngredients.length===0));
+ const mixed=dinnerFixture();mixed.patterns[0].dishes.forEach(d=>d.ingredients=d.ingredients.filter(i=>i.name!=='しめじ'));
+ const m=harness({output:mixed});const result=await (await m.handler(m.request({householdId,purchaseMode:'pantry'}))).json();assert.equal(result.patterns.length,1);assert.match(result.notice,/1件/);
+ const b=harness();const bd=await (await b.handler(b.request())).json();assert.equal(bd.patterns.length,3);assert.match(bd.notice,/買い足し/);
+});

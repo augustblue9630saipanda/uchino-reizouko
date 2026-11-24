@@ -1,4 +1,5 @@
 import {generationSchema,systemPrompt,validateDinner,annotateStock} from './contract.mjs';
+import {dinnerPreferences,inventoryContext} from './context.mjs';
 
 class PublicError extends Error{
  constructor(status,message){super(message);this.status=status;}
@@ -39,7 +40,8 @@ export function createDinnerHandler({env,fetchImpl=fetch,now=Date.now,preview=fa
    let body;try{body=JSON.parse(raw);}catch{throw new PublicError(400,'リクエストを読み取れませんでした。');}
    if(preview){
     if(!body||Object.keys(body).some(k=>k!=='inventory')||!Array.isArray(body.inventory)||body.inventory.length>100||body.inventory.some(n=>typeof n!=='string'||!n.trim()||n.length>100))throw new PublicError(400,'食材名を1〜100件、各100文字以内で指定してください。');
-   }else if(!body||!uuid.test(body.householdId)||Object.keys(body).some(k=>!['householdId'].includes(k)))throw new PublicError(400,'冷蔵庫の指定が正しくありません。');
+   }else if(!body||!uuid.test(body.householdId)||Object.keys(body).some(k=>!['householdId','requestText','moods','purchaseMode'].includes(k)))throw new PublicError(400,'冷蔵庫の指定が正しくありません。');
+   let preferences;try{preferences=dinnerPreferences(body);}catch(e){throw new PublicError(400,e.message);}
    const headers={apikey:anonKey,Authorization:authorization};
    const userResponse=await fetchImpl(supabaseUrl+'/auth/v1/user',{headers,signal:AbortSignal.timeout(10000)});
    if(!userResponse.ok)throw new PublicError(401,'ログインの有効期限が切れています。ログインし直してください。');
@@ -53,7 +55,7 @@ export function createDinnerHandler({env,fetchImpl=fetch,now=Date.now,preview=fa
    if(!households.ok)throw new PublicError(503,'冷蔵庫の共有権限を確認できませんでした。');
    const visible=await households.json();
    if(!Array.isArray(visible)||!visible.some(h=>h.id===body.householdId))throw new PublicError(403,'この冷蔵庫を使う権限がありません。');
-   const stockResponse=await fetchImpl(supabaseUrl+'/rest/v1/ingredients?select=name&household_id=eq.'+body.householdId+'&order=name.asc&limit=101',{headers,signal:AbortSignal.timeout(10000)});
+   const stockResponse=await fetchImpl(supabaseUrl+'/rest/v1/ingredients?select=name,quantity_level,registered_on,created_at&household_id=eq.'+body.householdId+'&order=name.asc&limit=101',{headers,signal:AbortSignal.timeout(10000)});
    if(!stockResponse.ok)throw new PublicError(503,'食材を読み込めませんでした。時間をおいて試してください。');
    rows=await stockResponse.json();
    }
@@ -66,7 +68,7 @@ export function createDinnerHandler({env,fetchImpl=fetch,now=Date.now,preview=fa
    if(attempts.has(user.id))throw new PublicError(429,'生成後は1分ほど待ってから、もう一度試してください。');
    if(attempts.size>=1000)throw new PublicError(429,'ただいま混み合っています。少し待ってください。');
    attempts.set(user.id,now());
-   const contents=[{role:'user',parts:[{text:JSON.stringify({inventory,variation:crypto.randomUUID()})}]}];
+   const contents=[{role:'user',parts:[{text:JSON.stringify({inventory,stock:inventoryContext(rows,now()),...preferences,variation:crypto.randomUUID()})}]}];
    const generationSignal=AbortSignal.timeout(75000);
    let dinner;
    // At most one format repair, sharing the original total timeout. HTTP failures,
@@ -105,7 +107,12 @@ export function createDinnerHandler({env,fetchImpl=fetch,now=Date.now,preview=fa
    }
    const annotated=annotateStock(dinner,inventory);
    if(annotated.patterns.some(p=>!p.dishes.some(d=>d.ingredients.some(i=>i.availability==='登録あり（量を確認）'))))throw new PublicError(502,'冷蔵庫の食材を使う献立になりませんでした。再生成してください。');
-   return reply(200,{...annotated,inventory,householdId:preview?null:body.householdId,mode:preview?'preview':'registered',model,generatedAt:new Date(now()).toISOString()});
+   let patterns=annotated.patterns,notice='';
+   if(preferences.purchaseMode==='pantry'){
+    patterns=patterns.filter(p=>!p.missingIngredients.length);
+    if(patterns.length<3)notice=patterns.length?'登録食材だけで組める献立は'+patterns.length+'件でした。3件に満たない分を、無理に買い足し不要とは表示していません。':'登録食材だけで主菜・副菜・汁物をそろえる献立を提案できませんでした。食材を増やすか「バランスよく提案」「買い足しOK」をお試しください。';
+   }else if(preferences.purchaseMode==='balanced'&&(!patterns.some(p=>!p.missingIngredients.length)||patterns.every(p=>!p.missingIngredients.length)))notice=patterns.every(p=>!p.missingIngredients.length)?'今回は3案とも主な食材の買い足し不要です。':'今回は買い足しが必要な3案です。在庫だけで組む献立を無理に成立させていません。';
+   return reply(200,{patterns,notice,purchaseMode:preferences.purchaseMode,inventory,householdId:preview?null:body.householdId,mode:preview?'preview':'registered',model,generatedAt:new Date(now()).toISOString()});
   }catch(e){
    if(e instanceof PublicError)return reply(e.status,{error:e.message});
    // Never return provider errors, prompts, authorization headers or credentials.
