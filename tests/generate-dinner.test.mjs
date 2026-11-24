@@ -160,3 +160,12 @@ test('pantry mode never labels missing ingredients as no shopping, even if model
  const m=harness({output:mixed});const result=await (await m.handler(m.request({householdId,purchaseMode:'pantry'}))).json();assert.equal(result.patterns.length,1);assert.match(result.notice,/1件/);
  const b=harness();const bd=await (await b.handler(b.request())).json();assert.equal(bd.patterns.length,3);assert.match(bd.notice,/買い足し/);
 });
+
+
+test('seasoning annotations do not cause false shopping and balanced reviews once within its original budget',async()=>{
+ const d=dinnerFixture();for(const p of d.patterns)for(const dish of p.dishes)dish.ingredients[2].name='しょうゆ（大人仕上げ用）';
+ assert.equal(annotateStock(d,['卵','しめじ']).patterns[0].missingIngredients.length,0);
+ const mixed=dinnerFixture();mixed.patterns[0].dishes.forEach(d=>d.ingredients=d.ingredients.filter(i=>i.name!=='しめじ'));
+ const h=harness({outputs:[dinnerFixture(),mixed]});const result=await (await h.handler(h.request())).json();assert.equal(result.patterns.length,3);assert.equal(result.patterns[0].missingIngredients.length,0);
+ const calls=h.calls.filter(c=>c.url.includes('googleapis'));assert.equal(calls.length,2);assert.equal(calls[0].init.signal,calls[1].init.signal);
+});

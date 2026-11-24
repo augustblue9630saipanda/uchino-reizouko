@@ -77,6 +77,7 @@ const systemPrompt=`あなたは家庭料理の献立作成アシスタントで
 今日食べたい料理のrequestTextとmoodsを優先し、一般家庭でなじみのある定番料理を中心に提案します。青椒肉絲、野菜炒め、カレー、肉じゃが、照り焼き、ハンバーグなど、料理名から味と完成形が想像できる名前にします。抽象的・過剰に創作的な名前は避け、実際の材料・切り方・味付け・調理法もその定番料理に沿わせます。子どものために取り分け、大人の仕上げで定番の味にします。
 リクエストされた料理を少なくとも1案に反映し、他の案は食材・調理法を変えて幅を持たせます。3案すべてを別名の同じ料理にしません。在庫は主菜だけでなく、副菜と汁物にも活用してください。
 purchaseModeはbalanced（初期値）・pantry・flexibleです。balancedは最低1案を主な食材の買い足しなし、最低1案は必要な買い足しも含めリクエストをかなえる案にし、可能な範囲で混ぜます。pantryは全3案でinventory以外の食材を使わないことを最優先し、リクエストと両立しない場合は在庫を優先します。flexibleは食べたい料理やリクエストを優先して買い足しを許可し、在庫も相性のよい品に使います。
+balancedの第1案は必ず最初に在庫のみで3品が可能か検討し、卵・豆腐・野菜などを主菜にも活用してください。お肉等の気分が指定されていても、在庫に肉がなければ第1案は在庫の卵や豆腐等で組み、買い足しが必要な肉料理やカレーは第2・第3案でかなえます。pantryでは買い足し条件がリクエストより優先です。
 水・塩・砂糖・油・しょうゆ・みそ等の基本調味料は家庭にあるか確認する前提で使えますが、ご飯・米・肉・魚・卵・牛乳・チーズ・野菜等の食材を調味料扱いして買い足しを隠してはいけません。在庫だけで3品が無理な場合は架空の在庫を作らず現実的な案を返します。サーバーが買い足しの有無を判定して、成立しない案を画面で説明します。
 各パターンで最低1つは在庫の食材を使い、在庫から使う材料名はinventoryと同じ表記にしてください。調味料や材料名に用途を書き足さず、用途はquantityに記載します。
 stockのquantityLevelは少・並・多の感覚的な残量目安、elapsedDaysは日本時間の登録からの日数（不明はnull）です。「少」は少量を副菜等に活用し、たくさんある前提にしないでください。「多」や登録から日数がたつ食材は、食べたい料理との相性を考慮して優先します。同名の別項目は別在庫なので参考にしますが、合算グラムは推測しません。日数は賞味期限ではなく、残量から正確な数量や足りることを断定しません。鮮度や安全性は判断せず、調理前に量と状態を確認する説明にします。
@@ -132,7 +133,7 @@ function validateDinner(value){
  return value;
 }
 
-const normalize=s=>s.normalize('NFKC').replace(/\s/g,'').toLowerCase();
+const normalize=s=>s.normalize('NFKC').replace(/\([^)]*\)/g,'').replace(/\s/g,'').toLowerCase();
 const aliases=[['卵','たまご','玉子','タマゴ'],['玉ねぎ','たまねぎ','タマネギ'],['にんじん','人参','ニンジン'],['じゃがいも','ジャガイモ'],['ねぎ','長ねぎ','長ネギ'],['豆腐','とうふ'],['しめじ','シメジ'],['ご飯','ごはん','白米']];
 const aliasMap=new Map(aliases.flatMap(g=>g.map(n=>[normalize(n),normalize(g[0])])));
 const canonical=s=>aliasMap.get(normalize(s))||normalize(s);
@@ -242,6 +243,14 @@ function createDinnerHandler({env,fetchImpl=fetch,now=Date.now,preview=false}){
     draft=candidate.content.parts.filter(p=>!p.thought&&typeof p.text==='string').map(p=>p.text).join('');
     if(draft.length>180000)throw Error('large');
     dinner=validateDinner(JSON.parse(draft));
+    // One bounded semantic review shares the format-repair limit and timeout.
+    // If stock-only menus still cannot be found, return an honest notice below.
+    const checked=annotateStock(dinner,inventory);
+    const needsShopping=checked.patterns.map(p=>p.missingIngredients.length>0);
+    if(attempt===0&&((preferences.purchaseMode==='balanced'&&needsShopping.every(Boolean))||(preferences.purchaseMode==='pantry'&&needsShopping.some(Boolean)))){
+     contents.push({role:'model',parts:[{text:draft}]},{role:'user',parts:[{text:'買い足し条件を見直してください。'+(preferences.purchaseMode==='pantry'?'全3案をinventory内の食材と基本調味料だけで組み、肉などの気分より在庫条件を優先してください。':'第1案はinventory内の食材だけで主菜・副菜・汁物を組んでください。肉が在庫になければ卵・豆腐・野菜を主菜にします。買い足しが必要なリクエスト料理は第2・第3案へ。')+'在庫にない食材を調味料扱いしないでください。本当に3品が無理なら無理に在庫を捏造せず現実的な案にしてください。分量・調理手順・取り分け等の情報量を維持して、全体JSONを返してください。'}]});
+     continue;
+    }
     break;
    }catch(e){
     // Log only schema paths/codes, never recipes, inventory, user ids or secrets.

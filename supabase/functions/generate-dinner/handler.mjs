@@ -93,6 +93,14 @@ export function createDinnerHandler({env,fetchImpl=fetch,now=Date.now,preview=fa
     draft=candidate.content.parts.filter(p=>!p.thought&&typeof p.text==='string').map(p=>p.text).join('');
     if(draft.length>180000)throw Error('large');
     dinner=validateDinner(JSON.parse(draft));
+    // One bounded semantic review shares the format-repair limit and timeout.
+    // If stock-only menus still cannot be found, return an honest notice below.
+    const checked=annotateStock(dinner,inventory);
+    const needsShopping=checked.patterns.map(p=>p.missingIngredients.length>0);
+    if(attempt===0&&((preferences.purchaseMode==='balanced'&&needsShopping.every(Boolean))||(preferences.purchaseMode==='pantry'&&needsShopping.some(Boolean)))){
+     contents.push({role:'model',parts:[{text:draft}]},{role:'user',parts:[{text:'買い足し条件を見直してください。'+(preferences.purchaseMode==='pantry'?'全3案をinventory内の食材と基本調味料だけで組み、肉などの気分より在庫条件を優先してください。':'第1案はinventory内の食材だけで主菜・副菜・汁物を組んでください。肉が在庫になければ卵・豆腐・野菜を主菜にします。買い足しが必要なリクエスト料理は第2・第3案へ。')+'在庫にない食材を調味料扱いしないでください。本当に3品が無理なら無理に在庫を捏造せず現実的な案にしてください。分量・調理手順・取り分け等の情報量を維持して、全体JSONを返してください。'}]});
+     continue;
+    }
     break;
    }catch(e){
     // Log only schema paths/codes, never recipes, inventory, user ids or secrets.

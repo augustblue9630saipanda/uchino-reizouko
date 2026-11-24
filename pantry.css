@@ -28,3 +28,5 @@
 @media(max-width:360px){.quantity-button{width:36px}.food-row{gap:2px}.food-row-name{gap:4px}.food-row-glyph{flex-basis:22px;width:22px;font-size:20px}.food-row-name{font-size:12px}}
 
 .pantry-select-target{display:grid;place-items:center;width:44px;height:44px;flex:0 0 44px;margin:0!important;cursor:pointer}.pantry-select-target .pantry-check{width:22px;min-height:22px;margin:0}
+
+@media(max-width:360px){.food-more{width:36px}}
