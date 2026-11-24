@@ -126,6 +126,7 @@ function validateDinner(value){
   combinations.add(combination);
   for(const [di,dish] of pattern.dishes.entries()){
    const path=`$.patterns[${pi}].dishes[${di}]`;
+   if(/分量外/.test(dish.adultFinish))fail(path+'.adultFinish','unlisted_ingredient');
    if(dish.role!=='副菜'&&dish.steps.length<2)fail(path+'.steps','array_count');
    if(dish.childServing.afterStep>dish.steps.length)fail(path+'.childServing.afterStep','serving_step');
    // Accept equivalent full-width/case/unit glyphs without changing quantities.
@@ -259,7 +260,7 @@ function createDinnerHandler({env,fetchImpl=fetch,now=Date.now,preview=false}){
     const issue=e?.issue||{path:'$',code:e instanceof SyntaxError?'json':'response'};
     console.warn(JSON.stringify({event:'dinner_validation_failed',version:'20261124-request1',attempt:attempt+1,issue}));
     if(attempt===0&&draft&&draft.length<=180000){
-     contents.push({role:'model',parts:[{text:draft}]},{role:'user',parts:[{text:'直前のJSONがサーバー検証に失敗しました。検証箇所='+issue.path+'、理由='+issue.code+'。最初の指示と各項目のdescriptionを確認し、この不備を含む形式を修正してください。献立の具体性、材料と分量、火加減・時間・加熱確認、十分な加熱後の子ども取り分けと大人の仕上げを省略しないでください。必ず異なる3パターン、各3品（主菜・副菜・汁物）、主菜・汁物のstepsは2〜15項目、副菜は1〜15項目、afterStepはstepsの範囲内、空文字・空配列は禁止です。修正済みの全体JSONだけを返してください。'}]});
+     contents.push({role:'model',parts:[{text:draft}]},{role:'user',parts:[{text:'直前のJSONがサーバー検証に失敗しました。検証箇所='+issue.path+'、理由='+issue.code+'。最初の指示と各項目のdescriptionを確認し、この不備を含む形式を修正してください。献立の具体性、材料と分量、火加減・時間・加熱確認、十分な加熱後の子ども取り分けと大人の仕上げを省略しないでください。大人用の仕上げで使う材料もすべてingredientsに具体量を記載し、「分量外」は禁止です。必ず異なる3パターン、各3品（主菜・副菜・汁物）、主菜・汁物のstepsは2〜15項目、副菜は1〜15項目、afterStepはstepsの範囲内、空文字・空配列は禁止です。修正済みの全体JSONだけを返してください。'}]});
      continue;
     }
     throw new PublicError(502,'献立の形式を確認できませんでした。再生成してください。');

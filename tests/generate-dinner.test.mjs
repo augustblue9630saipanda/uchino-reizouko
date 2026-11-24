@@ -177,3 +177,11 @@ test('a complete simple side dish may have one step, while mains and soups still
  for(const index of [0,2]){const invalid=dinnerFixture();invalid.patterns[0].dishes[index].steps.splice(1);invalid.patterns[0].dishes[index].childServing.afterStep=1;assert.throws(()=>validateDinner(invalid));}
  const missing=dinnerFixture();missing.patterns[0].dishes[1].steps[0].doneness='';assert.throws(()=>validateDinner(missing));
 });
+
+
+test('explicit unlisted adult finishing ingredients trigger the existing bounded repair',async()=>{
+ const d=dinnerFixture();d.patterns[0].dishes[1].adultFinish='オリーブ油を分量外でかける';
+ assert.throws(()=>validateDinner(d),e=>e.issue.code==='unlisted_ingredient');
+ const h=harness({outputs:[d,dinnerFixture()]});assert.equal((await h.handler(h.request())).status,200);
+ const calls=h.calls.filter(c=>c.url.includes('googleapis'));assert.equal(calls.length,2);assert.match(JSON.parse(calls[1].init.body).contents[2].parts[0].text,/分量外/);
+});

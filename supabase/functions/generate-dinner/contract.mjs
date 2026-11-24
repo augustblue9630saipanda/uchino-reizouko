@@ -87,6 +87,7 @@ export function validateDinner(value){
   combinations.add(combination);
   for(const [di,dish] of pattern.dishes.entries()){
    const path=`$.patterns[${pi}].dishes[${di}]`;
+   if(/分量外/.test(dish.adultFinish))fail(path+'.adultFinish','unlisted_ingredient');
    if(dish.role!=='副菜'&&dish.steps.length<2)fail(path+'.steps','array_count');
    if(dish.childServing.afterStep>dish.steps.length)fail(path+'.childServing.afterStep','serving_step');
    // Accept equivalent full-width/case/unit glyphs without changing quantities.
