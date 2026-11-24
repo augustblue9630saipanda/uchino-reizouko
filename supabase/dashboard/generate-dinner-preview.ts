@@ -49,7 +49,7 @@ const dinnerSchema=object({patterns:list(object({
   ingredients:list(object({name:short,quantity:short,kind:{type:'string',enum:['食材','調味料']}}),1,25),
   adultPortion:short, childPortion:short,
   preparation:list(text,1,10),
-  steps:list(object({instruction:text,heat:short,time:short,doneness:text}),2,15),
+  steps:list(object({instruction:text,heat:short,time:short,doneness:text}),1,15),
   childServing:object({afterStep:{type:'integer',minimum:1,maximum:15},instruction:text}),
   adultFinish:text, childSafety:text
  }),3,3)
@@ -70,6 +70,7 @@ function providerShape(schema){
  return result;
 }
 const generationSchema=providerShape(dinnerSchema);
+generationSchema.properties.patterns.items.properties.dishes.items.properties.steps.description="主菜・汁物は2〜15手順、副菜は1〜15手順。全てに具体的な作業・火加減・時間・確認方法を書く。";
 
 const systemPrompt=`あなたは家庭料理の献立作成アシスタントです。日本語の具体的なレシピをJSONで返してください。
 大人2人と2歳9か月の子ども1人の夕飯を、異なる組み合わせで必ず3パターン作成します。
@@ -90,7 +91,7 @@ adultPortionとchildPortionは必ず「約150g」「約80ml」のように数字
 adultFinishで使う薬味・チーズ・油・調味料も、すべてingredientsに量と「大人仕上げ用」の区分を記載します。材料一覧にないものを後から登場させないでください。
 下ごしらえは洗う・切る等を中心にし、魚を焼く等の加熱調理を行う場合はstepsに火加減・時間・加熱確認を必ず記載します。肉等は中心75℃で1分以上の確認を指示してください。実際に確認していないのに「完全に加熱しています」等と安全を保証せず、「加熱を確認する」と書いてください。
 下ごしらえに切る大きさと順番を明記し、全手順に火加減・時間（非加熱も明示）・火の通りの確認方法を記入します。加熱時間だけで安全と断定しません。
-各料理のpreparationは1〜10項目、stepsは必ず2〜15項目に分けます。簡単な副菜・汁物も調理と加熱確認などを分けて具体的に書き、空配列・空文字は使いません。ingredientsは1〜25項目です。各文章は1500文字以内、料理名・分量・火加減・時間は160文字以内にします。
+各料理のpreparationは1〜10項目、stepsは主菜・汁物で2〜15項目、副菜で1〜15項目に分けます。簡単な副菜も具体的な調理と確認方法を同じ手順内に含め、汁物は調理と加熱確認などを分けて書き、空配列・空文字は使いません。ingredientsは1〜25項目です。各文章は1500文字以内、料理名・分量・火加減・時間は160文字以内にします。
 子ども用の取り分けは十分な加熱の後、塩分・辛味・薬味等の大人用仕上げの前に行います。afterStepはその直前に完了する手順番号（1始まり）。大人用の追加調味はadultFinishに具体量と手順を書き、通常のsteps内で先に加えないでください。
 薄味でやわらかく、肉やキノコは繊維を断ち約1cm以下を目安に、発達に合わせてさらに細かくします。魚の骨、皮、筋を除きます。
 生・半生の肉魚卵、加熱不十分なキノコ、丸ごとのミニトマトやブドウ、硬い豆・ナッツ、餅など幼児に危険な形態の料理は提案しません。
@@ -125,6 +126,7 @@ function validateDinner(value){
   combinations.add(combination);
   for(const [di,dish] of pattern.dishes.entries()){
    const path=`$.patterns[${pi}].dishes[${di}]`;
+   if(dish.role!=='副菜'&&dish.steps.length<2)fail(path+'.steps','array_count');
    if(dish.childServing.afterStep>dish.steps.length)fail(path+'.childServing.afterStep','serving_step');
    // Accept equivalent full-width/case/unit glyphs without changing quantities.
    for(const field of ['adultPortion','childPortion'])if(!/[0-9].*(?:g|ml|グラム|ミリリットル)/i.test(dish[field].normalize('NFKC')))fail(path+'.'+field,'portion_quantity');
@@ -255,9 +257,9 @@ function createDinnerHandler({env,fetchImpl=fetch,now=Date.now,preview=false}){
    }catch(e){
     // Log only schema paths/codes, never recipes, inventory, user ids or secrets.
     const issue=e?.issue||{path:'$',code:e instanceof SyntaxError?'json':'response'};
-    console.warn(JSON.stringify({event:'dinner_validation_failed',version:'20261118-format2',attempt:attempt+1,issue}));
+    console.warn(JSON.stringify({event:'dinner_validation_failed',version:'20261124-request1',attempt:attempt+1,issue}));
     if(attempt===0&&draft&&draft.length<=180000){
-     contents.push({role:'model',parts:[{text:draft}]},{role:'user',parts:[{text:'直前のJSONがサーバー検証に失敗しました。検証箇所='+issue.path+'、理由='+issue.code+'。最初の指示と各項目のdescriptionを確認し、この不備を含む形式を修正してください。献立の具体性、材料と分量、火加減・時間・加熱確認、十分な加熱後の子ども取り分けと大人の仕上げを省略しないでください。必ず異なる3パターン、各3品（主菜・副菜・汁物）、各料理のstepsは2〜15項目、afterStepはstepsの範囲内、空文字・空配列は禁止です。修正済みの全体JSONだけを返してください。'}]});
+     contents.push({role:'model',parts:[{text:draft}]},{role:'user',parts:[{text:'直前のJSONがサーバー検証に失敗しました。検証箇所='+issue.path+'、理由='+issue.code+'。最初の指示と各項目のdescriptionを確認し、この不備を含む形式を修正してください。献立の具体性、材料と分量、火加減・時間・加熱確認、十分な加熱後の子ども取り分けと大人の仕上げを省略しないでください。必ず異なる3パターン、各3品（主菜・副菜・汁物）、主菜・汁物のstepsは2〜15項目、副菜は1〜15項目、afterStepはstepsの範囲内、空文字・空配列は禁止です。修正済みの全体JSONだけを返してください。'}]});
      continue;
     }
     throw new PublicError(502,'献立の形式を確認できませんでした。再生成してください。');

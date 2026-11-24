@@ -17,7 +17,7 @@ test('equivalent gram/millilitre glyphs are accepted without losing serving quan
   const d=dinnerFixture();d.patterns[0].dishes[0].childPortion=portion;
   assert.equal(validateDinner(d).patterns[0].dishes[0].childPortion,portion);
  }
- const d=dinnerFixture();d.patterns[0].dishes[1].steps.pop();
+ const d=dinnerFixture();d.patterns[0].dishes[1].steps.splice(0);
  assert.throws(()=>validateDinner(d),e=>e.issue.path==='$.patterns[0].dishes[1].steps'&&e.issue.code==='array_count');
 });
 function harness(options={}){
@@ -54,7 +54,7 @@ test('authenticated RLS reads and server-only Gemini call return exactly three c
 });
 
 test('one invalid recipe is repaired once with the original quality and shared timeout',async()=>{
- const invalid=dinnerFixture();invalid.patterns[0].dishes[1].steps.pop();
+ const invalid=dinnerFixture();invalid.patterns[0].dishes[1].steps.splice(0);
  const h=harness({outputs:[invalid,dinnerFixture()]});const r=await h.handler(h.request());
  assert.equal(r.status,200);assert.equal((await r.json()).patterns.length,3);
  const calls=h.calls.filter(c=>c.url.includes('googleapis'));assert.equal(calls.length,2);
@@ -168,4 +168,12 @@ test('seasoning annotations do not cause false shopping and balanced reviews onc
  const mixed=dinnerFixture();mixed.patterns[0].dishes.forEach(d=>d.ingredients=d.ingredients.filter(i=>i.name!=='しめじ'));
  const h=harness({outputs:[dinnerFixture(),mixed]});const result=await (await h.handler(h.request())).json();assert.equal(result.patterns.length,3);assert.equal(result.patterns[0].missingIngredients.length,0);
  const calls=h.calls.filter(c=>c.url.includes('googleapis'));assert.equal(calls.length,2);assert.equal(calls[0].init.signal,calls[1].init.signal);
+});
+
+
+test('a complete simple side dish may have one step, while mains and soups still require two',()=>{
+ const d=dinnerFixture();d.patterns[0].dishes[1].steps.splice(1);d.patterns[0].dishes[1].childServing.afterStep=1;
+ assert.equal(validateDinner(d).patterns[0].dishes[1].steps.length,1);
+ for(const index of [0,2]){const invalid=dinnerFixture();invalid.patterns[0].dishes[index].steps.splice(1);invalid.patterns[0].dishes[index].childServing.afterStep=1;assert.throws(()=>validateDinner(invalid));}
+ const missing=dinnerFixture();missing.patterns[0].dishes[1].steps[0].doneness='';assert.throws(()=>validateDinner(missing));
 });

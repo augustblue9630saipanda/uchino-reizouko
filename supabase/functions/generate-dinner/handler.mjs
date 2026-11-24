@@ -105,9 +105,9 @@ export function createDinnerHandler({env,fetchImpl=fetch,now=Date.now,preview=fa
    }catch(e){
     // Log only schema paths/codes, never recipes, inventory, user ids or secrets.
     const issue=e?.issue||{path:'$',code:e instanceof SyntaxError?'json':'response'};
-    console.warn(JSON.stringify({event:'dinner_validation_failed',version:'20261118-format2',attempt:attempt+1,issue}));
+    console.warn(JSON.stringify({event:'dinner_validation_failed',version:'20261124-request1',attempt:attempt+1,issue}));
     if(attempt===0&&draft&&draft.length<=180000){
-     contents.push({role:'model',parts:[{text:draft}]},{role:'user',parts:[{text:'直前のJSONがサーバー検証に失敗しました。検証箇所='+issue.path+'、理由='+issue.code+'。最初の指示と各項目のdescriptionを確認し、この不備を含む形式を修正してください。献立の具体性、材料と分量、火加減・時間・加熱確認、十分な加熱後の子ども取り分けと大人の仕上げを省略しないでください。必ず異なる3パターン、各3品（主菜・副菜・汁物）、各料理のstepsは2〜15項目、afterStepはstepsの範囲内、空文字・空配列は禁止です。修正済みの全体JSONだけを返してください。'}]});
+     contents.push({role:'model',parts:[{text:draft}]},{role:'user',parts:[{text:'直前のJSONがサーバー検証に失敗しました。検証箇所='+issue.path+'、理由='+issue.code+'。最初の指示と各項目のdescriptionを確認し、この不備を含む形式を修正してください。献立の具体性、材料と分量、火加減・時間・加熱確認、十分な加熱後の子ども取り分けと大人の仕上げを省略しないでください。必ず異なる3パターン、各3品（主菜・副菜・汁物）、主菜・汁物のstepsは2〜15項目、副菜は1〜15項目、afterStepはstepsの範囲内、空文字・空配列は禁止です。修正済みの全体JSONだけを返してください。'}]});
      continue;
     }
     throw new PublicError(502,'献立の形式を確認できませんでした。再生成してください。');

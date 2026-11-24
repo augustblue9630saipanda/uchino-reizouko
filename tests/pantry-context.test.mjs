@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import vm from 'node:vm';
 import {japanToday,validDay,registrationDay,elapsedDays,ageLabel,sortPantry,dinnerPreferences,inventoryContext} from '../supabase/functions/generate-dinner/context.mjs';
 test('JST date rolls over at 15:00 UTC, uses calendar days and preserves explicit unknown dates',()=>{
  const before=Date.parse('2026-11-23T14:59:59Z'),after=before+1000;
@@ -20,4 +22,11 @@ test('preferences accept empty or combined requests, reject invalid values and u
  assert.deepEqual(dinnerPreferences({requestText:' カレー ',moods:['お肉','時短','お肉'],purchaseMode:'flexible'}).moods,['お肉','時短']);
  for(const input of [{requestText:'x'.repeat(401)},{moods:['unknown']},{moods:'時短'},{purchaseMode:'bad'}])assert.throws(()=>dinnerPreferences(input));
  assert.deepEqual(inventoryContext([{name:'にんじん',quantity_level:'low',registered_on:'2026-11-20'}],Date.parse('2026-11-23T15:00Z')),[{name:'にんじん',quantityLevel:'少',elapsedDays:4}]);
+});
+test('dashboard bundle contains the exact current modules and compiles without duplicate declarations',()=>{
+ const base=new URL('../supabase/',import.meta.url);
+ const modules=['context.mjs','contract.mjs','handler.mjs'].map(name=>readFileSync(new URL('functions/generate-dinner/'+name,base),'utf8').replace(/^import .*;\r?\n/gm,'').replace(/^export /gm,''));
+ const bundle=readFileSync(new URL('dashboard/generate-dinner.ts',base),'utf8');
+ for(const source of modules)assert.ok(bundle.includes(source));
+ assert.doesNotThrow(()=>new vm.Script(bundle.replace('(name:string)','(name)')));
 });
