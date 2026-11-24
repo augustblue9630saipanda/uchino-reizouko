@@ -20,3 +20,11 @@
 .pantry-category-list{min-width:0}
 #page-fridge .page-heading{margin-bottom:16px}
 #page-fridge .chips{margin-bottom:14px}
+
+.pantry-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px}.pantry-toolbar select{width:auto;max-width:70%;min-height:44px;margin:0;font-size:13px;padding:6px 10px}.pantry-selection{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px;padding:6px 0}.pantry-selection button{min-height:44px}.pantry-selection .danger{margin-left:auto;padding:0 12px}
+.food-row-label{display:flex;flex-direction:column;justify-content:center;line-height:1.2}.food-row-title{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}.food-row-age{display:block;color:var(--muted);font-size:10px;line-height:1.3;font-weight:400;margin-top:2px;white-space:nowrap}
+.food-trash{display:grid;place-items:center;width:44px;height:44px;padding:0;flex:0 0 44px;color:#8a7062}.food-trash svg{width:18px;height:18px}.food-trash:hover{background:#f3e6dc;border-radius:6px}.pantry-check{appearance:auto;accent-color:var(--green);width:24px;min-height:24px;flex:0 0 24px;margin:0 8px 0 0}
+.dinner-preferences{border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin-bottom:16px}.dinner-preferences summary{cursor:pointer;font-size:14px;font-weight:600;min-height:32px}.dinner-preferences summary small{font-size:11px;font-weight:400;color:var(--muted)}.dinner-preferences label{font-size:12px}.dinner-preferences textarea{font-size:16px;min-height:64px}.dinner-preferences select{font-size:14px}.mood-chips{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}.mood-chips .chip{font-size:12px;min-height:40px;padding:6px 12px}.dinner-preferences .caption{margin:4px 0 0}.plan-bottom small{overflow-wrap:anywhere;line-height:1.6}
+@media(max-width:360px){.quantity-button{width:36px}.food-row{gap:2px}.food-row-name{gap:4px}.food-row-glyph{flex-basis:22px;width:22px;font-size:20px}.food-row-name{font-size:12px}}
+
+.pantry-select-target{display:grid;place-items:center;width:44px;height:44px;flex:0 0 44px;margin:0!important;cursor:pointer}.pantry-select-target .pantry-check{width:22px;min-height:22px;margin:0}

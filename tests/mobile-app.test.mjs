@@ -5,6 +5,7 @@ import {readFileSync} from 'node:fs';
 import {dinnerFixture} from './dinner-fixture.mjs';
 import {annotateStock} from '../supabase/functions/generate-dinner/contract.mjs';
 import {createFeedback} from '../feedback.mjs';
+import {japanToday,validDay,registrationDay,ageLabel,sortPantry,moodOptions} from '../supabase/functions/generate-dinner/context.mjs';
 const html=readFileSync(new URL('../index.html',import.meta.url),'utf8');
 const source=readFileSync(new URL('../app.js',import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'');
 const hh='11111111-1111-4111-8111-111111111111';
@@ -20,7 +21,7 @@ async function setup(options={}){
  const document={visibilityState:'visible',getElementById:id=>nodes.get(id),createElement:node,createElementNS:(ns,tag)=>node(tag),createDocumentFragment:()=>({...node(),fragment:true}),createTextNode:text=>({textContent:text,children:[]}),addEventListener(){},querySelector(s){if(s==='dialog[open]')return [...nodes.values()].find(n=>n.tagName==='DIALOG'&&n.open)||null;return null;},querySelectorAll(s){if(s==='dialog')return [...nodes.values()].filter(n=>n.tagName==='DIALOG');if(s==='dialog[open]')return [...nodes.values()].filter(n=>n.tagName==='DIALOG'&&n.open);if(s==='.page')return ['home','fridge','dinner','shopping'].map(p=>nodes.get('page-'+p));if(s==='.navBtn')return nav;return[];}};
  let items=[];const calls=[],subscriptions=[];
  const db={rpc:async(name,args)=>{calls.push({rpc:name,args});return options.rpc?options.rpc(name,args):{data:{status:"saved",count:args.p_items.length},error:null};},auth:{getSession:async()=>({data:{session:null}}),onAuthStateChange(){},signUp:options.signUp,resend:options.resend},functions:{invoke:options.invoke||(async()=>({data:{...annotateStock(dinnerFixture(),['卵']),householdId:hh},error:null}))},removeChannel(){},channel(){const ch={on(event,filter,callback){subscriptions.push({filter,callback});return ch;},subscribe(){return ch;}};return ch;},from(table){
-  const call={table,op:'select',filters:{}};const query={select(){return query;},order(){return query;},eq(k,v){call.filters[k]=v;return query;},insert(values){call.op='insert';call.values=values;return query;},update(values){call.op='update';call.values=values;return query;},delete(){call.op='delete';return query;},then(resolve,reject){calls.push(call);return Promise.resolve().then(async()=>{
+  const call={table,op:'select',filters:{}};const query={select(){return query;},order(){return query;},eq(k,v){call.filters[k]=v;return query;},in(k,v){call.filters[k]=v;return query;},insert(values){call.op='insert';call.values=values;return query;},update(values){call.op='update';call.values=values;return query;},delete(){call.op='delete';return query;},then(resolve,reject){calls.push(call);return Promise.resolve().then(async()=>{
    if(options.query)return options.query(call);
    if(options.fail&&call.op!=='select')return {error:{message:'保存失敗'}};
    if(table==='shopping_items'){
@@ -32,7 +33,7 @@ async function setup(options={}){
    return {data:[],error:null};
   }).then(resolve,reject);}};return query;
  }};
- const context=vm.createContext({document,window:{location:{hash:options.hash||'',origin:'http://localhost:3000'},scrollTo(){},addEventListener(){}},createClient:()=>db,createFeedback,URL,URLSearchParams,Intl,Date,console,setTimeout:()=>0,clearTimeout(){},setInterval(){},localStorage:{getItem(){return null;},setItem(){}},navigator:{clipboard:{writeText:async()=>{}}}});
+ const context=vm.createContext({document,window:{location:{hash:options.hash||'',origin:'http://localhost:3000'},scrollTo(){},addEventListener(){}},createClient:()=>db,createFeedback,URL,URLSearchParams,Intl,Date,console,japanToday,validDay,registrationDay,ageLabel,sortPantry,moodOptions,setTimeout:()=>0,clearTimeout(){},setInterval(){},localStorage:{getItem(){return null;},setItem(){}},navigator:{clipboard:{writeText:async()=>{}}}});
  const api=await vm.runInContext('(async()=>{'+source+`
  return {setup(){activeUser={id:'u',email:'test@example.test'};householdId='${hh}';mealItems=[{id:'f1',name:'卵'}];shoppingLoaded=true;renderPantry();renderShopping();},state(){return {householdId,currentPage,dinnerPlans,shoppingItems,mealItems,dinnerBusy,pendingPantryAdd,pantrySaving};},setStock(items){mealItems=items;renderPantry();},renderFilters,renderPantry,setFoodQuantity,addPantryItems,navigate,renderDinner,openRecipe,renderDish,resetScope,categoryFor,foodGlyph,loadShopping,loadItems,subscribeHousehold,toggleShopping,editShopping,editFood,logout(){activeUser=null;householdId=null;resetScope();},switchScope(){householdId='other';resetScope();},addExternal(){},};
  })()`,context);
@@ -181,6 +182,32 @@ test('ingredient icons prefer normalized food names and fall back to the existin
  const row=nodes.get('items').children[0].children[1].children[0];
  assert.equal(row.children[0].children[0].textContent,'🥚');
  assert.equal(row.children[0].children[0].attributes['aria-hidden'],'true');
- assert.equal(row.children[0].children[1].textContent,'卵');
+ assert.equal(row.children[0].children[1].children[0].textContent,'卵');
  assert.equal(row.children[1].children.length,3);
+});
+
+
+test('date order is flat, date edits are explicit and ordinary edits preserve the original date',async()=>{
+ const {api,nodes,calls}=await setup();api.setStock([{id:'a',name:'卵',registered_on:'2026-11-20'},{id:'b',name:'にんじん',registered_on:'2026-11-22'},{id:'c',name:'謎の食材',registered_on:null}]);
+ nodes.get('pantryOrder').value='newest';nodes.get('pantryOrder').onchange();
+ assert.equal(nodes.get('items').children[0].className,'food-row');assert.ok(text(nodes.get('items').children[0]).includes('にんじん'));
+ assert.ok(text(nodes.get('items').children[2]).includes('登録日不明'));
+ const food={id:'a',name:'卵',registered_on:'2026-11-20'};api.editFood(food);nodes.get('foodCategory').value='卵・乳製品';await nodes.get('foodForm').onsubmit(submit);
+ assert.ok(!Object.hasOwn(calls.find(c=>c.op==='update').values,'registered_on'));
+ api.editFood(food);nodes.get('foodRegisteredOn').value='';await nodes.get('foodForm').onsubmit(submit);assert.equal(calls.filter(c=>c.op==='update').at(-1).values.registered_on,null);
+});
+
+test('bulk selection respects visible filter, confirmation, cancellation and household scoping',async()=>{
+ const {api,nodes,calls}=await setup({query:async c=>({data:c.op==='delete'?[{id:'a'}]:[],error:null})});
+ api.setStock([{id:'a',name:'にんじん'},{id:'b',name:'牛乳'}]);nodes.get('pantrySelect').onclick();nodes.get('foodSearch').value='にんじん';nodes.get('foodSearch').oninput();nodes.get('pantrySelectAll').onclick();
+ assert.equal(nodes.get('pantrySelectedCount').textContent,'1件選択');nodes.get('pantryDeleteSelected').onclick();assert.ok(nodes.get('pantryDeleteText').textContent.includes('1件'));
+ nodes.get('pantryDeleteCancel').onclick();assert.equal(calls.filter(c=>c.op==='delete').length,0);
+ nodes.get('pantryDeleteSelected').onclick();await nodes.get('pantryDeleteConfirm').onclick();const del=calls.find(c=>c.op==='delete');assert.equal(del.filters.household_id,hh);assert.deepEqual(Array.from(del.filters.id),['a']);
+ api.setStock([{id:'x',name:'卵'}]);nodes.get('pantrySelect').onclick();nodes.get('foodSearch').value='';nodes.get('foodSearch').oninput();nodes.get('pantrySelectAll').onclick();nodes.get('pantryDeleteSelected').onclick();api.switchScope();await nodes.get('pantryDeleteConfirm').onclick();assert.equal(calls.filter(c=>c.op==='delete').length,1);
+});
+
+test('dinner request combines multiple moods and pantry shortfall shows an explanation instead of fabricated cards',async()=>{
+ let body;const {nodes}=await setup({invoke:async(name,args)=>{body=args.body;return {data:{patterns:[],purchaseMode:'pantry',notice:'在庫だけでは3品をそろえられません',householdId:hh},error:null};}});
+ nodes.get('dinnerRequest').value='カレー';nodes.get('dinnerPurchaseMode').value='pantry';nodes.get('dinnerMoods').children[0].onclick();nodes.get('dinnerMoods').children.find(b=>b.textContent==='時短').onclick();await nodes.get('generateDinner').onclick();
+ assert.equal(body.requestText,'カレー');assert.deepEqual(Array.from(body.moods),['がっつり','時短']);assert.equal(body.purchaseMode,'pantry');assert.match(nodes.get('dinnerStatus').textContent,/そろえられません/);assert.equal(nodes.get('dinnerResults').children.length,0);
 });
