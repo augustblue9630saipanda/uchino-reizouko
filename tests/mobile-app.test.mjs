@@ -5,6 +5,7 @@ import {readFileSync} from 'node:fs';
 import {dinnerFixture} from './dinner-fixture.mjs';
 import {annotateStock} from '../supabase/functions/generate-dinner/contract.mjs';
 import {createFeedback} from '../feedback.mjs';
+import {createPurchaseImport} from '../purchase-import.mjs';
 import {japanToday,validDay,registrationDay,ageLabel,sortPantry,moodOptions} from '../supabase/functions/generate-dinner/context.mjs';
 const html=readFileSync(new URL('../index.html',import.meta.url),'utf8');
 const source=readFileSync(new URL('../app.js',import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'');
@@ -33,9 +34,9 @@ async function setup(options={}){
    return {data:[],error:null};
   }).then(resolve,reject);}};return query;
  }};
- const context=vm.createContext({document,window:{location:{hash:options.hash||'',origin:'http://localhost:3000'},scrollTo(){},addEventListener(){}},createClient:()=>db,createFeedback,URL,URLSearchParams,Intl,Date,console,japanToday,validDay,registrationDay,ageLabel,sortPantry,moodOptions,setTimeout:()=>0,clearTimeout(){},setInterval(){},localStorage:{getItem(){return null;},setItem(){}},navigator:{clipboard:{writeText:async()=>{}}}});
+ const context=vm.createContext({document,window:{location:{hash:options.hash||'',origin:'http://localhost:3000'},scrollTo(){},addEventListener(){}},createClient:()=>db,createFeedback,createPurchaseImport,URL,URLSearchParams,Intl,Date,console,japanToday,validDay,registrationDay,ageLabel,sortPantry,moodOptions,setTimeout:()=>0,clearTimeout(){},setInterval(){},localStorage:{getItem(){return null;},setItem(){}},navigator:{clipboard:{writeText:async()=>{}}}});
  const api=await vm.runInContext('(async()=>{'+source+`
- return {setup(){activeUser={id:'u',email:'test@example.test'};householdId='${hh}';mealItems=[{id:'f1',name:'卵'}];shoppingLoaded=true;renderPantry();renderShopping();},state(){return {householdId,currentPage,dinnerPlans,shoppingItems,mealItems,dinnerBusy,pendingPantryAdd,pantrySaving};},setStock(items){mealItems=items;renderPantry();},renderFilters,renderPantry,setFoodQuantity,addPantryItems,navigate,renderDinner,openRecipe,renderDish,resetScope,categoryFor,foodGlyph,loadShopping,loadItems,subscribeHousehold,toggleShopping,editShopping,editFood,logout(){activeUser=null;householdId=null;resetScope();},switchScope(){householdId='other';resetScope();},addExternal(){},};
+ return {purchaseImport,setup(){activeUser={id:'u',email:'test@example.test'};householdId='${hh}';mealItems=[{id:'f1',name:'卵'}];shoppingLoaded=true;renderPantry();renderShopping();},state(){return {householdId,currentPage,dinnerPlans,shoppingItems,mealItems,dinnerBusy,pendingPantryAdd,pantrySaving};},setStock(items){mealItems=items;renderPantry();},renderFilters,renderPantry,setFoodQuantity,addPantryItems,navigate,renderDinner,openRecipe,renderDish,resetScope,categoryFor,foodGlyph,loadShopping,loadItems,subscribeHousehold,toggleShopping,editShopping,editFood,logout(){activeUser=null;householdId=null;resetScope();},switchScope(){householdId='other';resetScope();},addExternal(){},};
  })()`,context);
  api.setup();return {api,nodes,nav,calls,subscriptions,document};
 }
@@ -210,4 +211,25 @@ test('dinner request combines multiple moods and pantry shortfall shows an expla
  let body;const {nodes}=await setup({invoke:async(name,args)=>{body=args.body;return {data:{patterns:[],purchaseMode:'pantry',notice:'在庫だけでは3品をそろえられません',householdId:hh},error:null};}});
  nodes.get('dinnerRequest').value='カレー';nodes.get('dinnerPurchaseMode').value='pantry';nodes.get('dinnerMoods').children[0].onclick();nodes.get('dinnerMoods').children.find(b=>b.textContent==='時短').onclick();await nodes.get('generateDinner').onclick();
  assert.equal(body.requestText,'カレー');assert.deepEqual(Array.from(body.moods),['がっつり','時短']);assert.equal(body.purchaseMode,'pantry');assert.match(nodes.get('dinnerStatus').textContent,/そろえられません/);assert.equal(nodes.get('dinnerResults').children.length,0);
+});
+
+
+test('shopping import selects food but not daily goods, carries purchase amounts, and commits once',async()=>{
+ const shopping=[{id:'s1',name:'牛乳',purchased:true,quantity:'2',unit:'本'},{id:'s2',name:'食器用洗剤',purchased:true},{id:'s3',name:'謎の品',purchased:true},{id:'s4',name:'卵',purchased:true,pantry_registered_at:'2026-11-25'}];
+ const {api,nodes,calls}=await setup({query:async c=>({data:c.table==='shopping_items'?shopping:[],error:null}),rpc:async()=>({data:{status:'saved',added:1,updated:0,purchased:1,already:0},error:null})});
+ await api.purchaseImport.openShopping();const state=api.purchaseImport.state();assert.equal(state.candidates.length,3);assert.equal(state.candidates[0].selected,true);assert.equal(state.candidates[1].selected,false);assert.equal(state.candidates[2].selected,false);assert.equal(state.candidates[0].quantityText,'2 本');
+ await nodes.get('importSave').onclick();const call=calls.find(c=>c.rpc==='commit_pantry_import');assert.equal(call.args.p_entries.length,1);assert.equal(call.args.p_entries[0].shopping_id,'s1');assert.equal(call.args.p_entries[0].quantity_level,'normal');assert.match(call.args.p_entries[0].registered_on,/^[0-9]{4}-/);
+ await nodes.get('importSave').onclick();assert.equal(calls.filter(c=>c.rpc==='commit_pantry_import').length,1);
+});
+
+test('shopping import requires explicit duplicate handling, preserves targets and retries the same batch after failure',async()=>{
+ let attempts=0;const shopping=[{id:'s1',name:'牛乳',purchased:true}];
+ const {api,nodes,calls}=await setup({query:async c=>({data:c.table==='shopping_items'?shopping:[{id:'f1',name:'牛乳',registered_on:'2026-11-01'}],error:null}),rpc:async()=>++attempts===1?{error:{message:'通信失敗'}}:{data:{status:'saved',added:0,updated:1,purchased:1,already:0},error:null}});
+ await api.purchaseImport.openShopping();await nodes.get('importSave').onclick();assert.equal(calls.filter(c=>c.rpc==='commit_pantry_import').length,0);
+ const row=api.purchaseImport.state().candidates[0];row.action='update';row.target_id='f1';row.quantity_level='high';await nodes.get('importSave').onclick();await nodes.get('importSave').onclick();const rpc=calls.filter(c=>c.rpc==='commit_pantry_import');assert.equal(rpc.length,2);assert.equal(rpc[0].args.p_batch,rpc[1].args.p_batch);assert.equal(rpc[1].args.p_entries[0].action,'update');assert.equal(rpc[1].args.p_entries[0].target_id,'f1');
+});
+
+test('import does not show another households late save result and clears private draft on scope change',async()=>{
+ let resolve;const {api,nodes}=await setup({query:async c=>({data:c.table==='shopping_items'?[{id:'s1',name:'牛乳',purchased:true}]:[],error:null}),rpc:()=>new Promise(r=>resolve=r)});
+ await api.purchaseImport.openShopping();const pending=nodes.get('importSave').onclick();api.switchScope();resolve({data:{status:'saved',added:1,updated:0,purchased:1},error:null});await pending;assert.equal(api.purchaseImport.state().candidates.length,0);assert.equal(api.purchaseImport.state().locked,false);assert.equal(nodes.get('importStatus').textContent,'');
 });

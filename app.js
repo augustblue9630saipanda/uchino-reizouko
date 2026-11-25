@@ -1,4 +1,5 @@
 import {createClient} from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+import {createPurchaseImport} from './purchase-import.mjs?v=20261125.1';
 import {createFeedback} from './feedback.mjs?v=20261120.2';
 import {japanToday,validDay,registrationDay,ageLabel,sortPantry,moodOptions} from './supabase/functions/generate-dinner/context.mjs?v=20261124.1';
 
@@ -213,6 +214,7 @@ function renderShopping(){
   const check=button('','shopping-check',()=>toggleShopping(item));check.setAttribute('aria-label',item.name+(item.purchased?'を未購入に戻す':'を購入済みにする'));check.setAttribute('aria-pressed',String(item.purchased));check.disabled=shoppingLocks.has(item.id);
   const box=el('span');if(item.purchased)box.append(icon('check'));check.append(box);
   const info=el('div','shopping-info');info.append(el('div','shopping-name',item.name));const amount=[item.quantity,item.unit].filter(Boolean).join(' ');if(amount)info.append(el('div','shopping-quantity',amount));
+  if(item.pantry_registered_at)info.append(el('small','pantry-imported','冷蔵庫登録済み'));
   const edit=button('','shopping-edit',()=>editShopping(item));edit.append(icon('edit'));edit.setAttribute('aria-label',item.name+'の数量などを編集');
   row.append(check,info,edit);$(item.purchased?'purchasedItems':'shoppingItems').append(row);
  }
@@ -221,7 +223,7 @@ function renderShopping(){
 async function loadShopping(){
  if(!householdId)return;
  const scope=scopeVersion,target=householdId,request=++shoppingRequest;
- const {data,error}=await db.from('shopping_items').select('id,name,quantity,unit,purchased,created_at').eq('household_id',target).order('created_at',{ascending:false});
+ const {data,error}=await db.from('shopping_items').select('id,name,quantity,unit,purchased,created_at,pantry_registered_at,pantry_ingredient_id').eq('household_id',target).order('created_at',{ascending:false});
  if(scope!==scopeVersion||request!==shoppingRequest)return;
  if(error){$('shoppingSummary').textContent='読み込めませんでした。「更新」でもう一度お試しください。';throw error;}
  const next=data||[],changed=!shoppingLoaded||JSON.stringify(shoppingItems)!==JSON.stringify(next);shoppingItems=next;shoppingLoaded=true;if(changed)renderShopping();$('shoppingSync').textContent='同じ世帯の家族と共有中 · '+new Date().toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'})+' 更新';
@@ -336,7 +338,7 @@ $('saveCandidates').onclick=async()=>{
 };
 
 function savedKey(){return activeUser?'reizouko-household-'+activeUser.id:'';}
-function resetScope(){selectedPantryIds.clear();pantrySelecting=false;pantryDeleting=false;pendingPantryDelete=null;selectedMoods.clear();$('dinnerRequest').value='';$('dinnerPurchaseMode').value='balanced';$('pantryOrder').value='category';$('pantryDeleteConfirm').disabled=false;$('pantryDeleteCancel').disabled=false;$('pantryDeleteDialog').classList.remove('is-saving');collapsedPantryCategories.clear();scopeVersion++;pantryRequest++;shoppingRequest++;mealItems=null;shoppingItems=[];shoppingLoaded=false;shoppingLocks.clear();quantityLocks.clear();pendingPantryAdd=null;pantryBusy(false);closeSheets();clearPhoto();resetDinner();renderPantry();renderShopping();feedback.reset();feedback.sync();if(channel){db.removeChannel(channel);channel=null;}}
+function resetScope(){purchaseImport.reset();selectedPantryIds.clear();pantrySelecting=false;pantryDeleting=false;pendingPantryDelete=null;selectedMoods.clear();$('dinnerRequest').value='';$('dinnerPurchaseMode').value='balanced';$('pantryOrder').value='category';$('pantryDeleteConfirm').disabled=false;$('pantryDeleteCancel').disabled=false;$('pantryDeleteDialog').classList.remove('is-saving');collapsedPantryCategories.clear();scopeVersion++;pantryRequest++;shoppingRequest++;mealItems=null;shoppingItems=[];shoppingLoaded=false;shoppingLocks.clear();quantityLocks.clear();pendingPantryAdd=null;pantryBusy(false);closeSheets();clearPhoto();resetDinner();renderPantry();renderShopping();feedback.reset();feedback.sync();if(channel){db.removeChannel(channel);channel=null;}}
 function show(user){$('authBox').classList.toggle('hidden',!!user);$('appBox').classList.toggle('hidden',!user);$('bottomNav').classList.toggle('hidden',!user);$('settingsOpen').classList.toggle('hidden',!user);$('account').textContent=user?'ログイン中：'+user.email:'';feedback.sync();}
 async function getHouseholds(){const {data,error}=await db.from('households').select('id,name').order('created_at',{ascending:true});if(error)throw error;return data||[];}
 async function refreshHouseholds(preferredId){
@@ -363,6 +365,10 @@ $('householdSelect').onchange=async()=>{const target=$('householdSelect').value;
 $('makeInvite').onclick=async()=>{if(!householdId)return;$('makeInvite').disabled=true;const scope=scopeVersion;try{const {data,error}=await db.rpc('create_household_invitation',{target_household_id:householdId});if(error)throw error;if(scope!==scopeVersion)return;inviteValue=data;$('inviteCode').textContent=data;$('inviteCode').classList.remove('hidden');$('copyInvite').classList.remove('hidden');message('家族に招待コードを伝えてください。');}catch(e){message(e.message);}finally{$('makeInvite').disabled=false;}};
 $('copyInvite').onclick=async()=>{try{await navigator.clipboard.writeText(inviteValue);message('招待コードをコピーしました。');}catch{message('表示された招待コードを選択してコピーしてください。');}};
 $('joinForm').onsubmit=async e=>{e.preventDefault();const code=$('joinCode').value.trim().toLowerCase();if(!code)return;const btn=$('joinForm').querySelector('button');btn.disabled=true;try{const {data,error}=await db.rpc('join_household',{invitation_code:code});if(error)throw error;householdId=null;resetScope();await refreshHouseholds(data);$('joinCode').value='';navigate('fridge');message('家族の冷蔵庫と買い物リストに参加しました。');}catch(e){message(e.message);}finally{btn.disabled=false;}};
+async function prepareReceiptImage(file){
+ return new Promise((resolve,reject)=>{const img=new Image(),src=URL.createObjectURL(file);img.onload=()=>{try{const scale=Math.min(1,2400/Math.max(img.width,img.height));const canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(img.width*scale));canvas.height=Math.max(1,Math.round(img.height*scale));const context=canvas.getContext('2d');context.fillStyle='#fff';context.fillRect(0,0,canvas.width,canvas.height);context.drawImage(img,0,0,canvas.width,canvas.height);let data=canvas.toDataURL('image/jpeg',.85).split(',')[1];if(data.length>4800000)data=canvas.toDataURL('image/jpeg',.65).split(',')[1];if(data.length>4800000)throw Error('画像が大きすぎます。明細を分けて撮影してください。');resolve({mimeType:'image/jpeg',image:data});}catch(e){reject(e);}finally{URL.revokeObjectURL(src);}};img.onerror=()=>{URL.revokeObjectURL(src);reject(Error('画像を開けませんでした。JPEGやPNGで選択し直してください。'));};img.src=src;});
+}
+const purchaseImport=createPurchaseImport({document,window,db,getScope:()=>({userId:activeUser?.id,householdId,scopeVersion}),getStock:()=>mealItems||[],getShopping:()=>shoppingItems,refresh:()=>Promise.all([loadItems(),loadShopping()]),notify:message,openSheet,el,button,categoryFor,foodGlyph,prepareReceiptImage});
 const feedback=createFeedback({document,window,db,getScope:()=>({user:activeUser,householdId,version:scopeVersion,page:currentPage}),notify:message,navigate,openSheet,el,button,icon});
 renderFilters();
 // Show a useful recovery message for expired/reused confirmation links, without displaying tokens.
