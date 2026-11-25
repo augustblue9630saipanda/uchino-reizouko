@@ -27,6 +27,7 @@ export function createPurchaseImport({document,window,db,getScope,getStock,getSh
  function field(label,input){const wrap=el('label','import-field');wrap.append(el('span','',label),input);return wrap;}
  function render(){
   $('importRows').replaceChildren();let registrations=0,purchases=0;
+  $('importAddRow').classList.toggle('hidden',source==='shopping');
   for(const c of candidates){
    const row=el('article','import-row'),header=el('div','import-row-head');
    const check=el('input');check.type='checkbox';check.checked=c.selected;check.disabled=saving||locked;check.setAttribute('aria-label',c.originalName+'を冷蔵庫に登録');check.onchange=()=>{c.selected=check.checked;render();};
@@ -52,7 +53,7 @@ export function createPurchaseImport({document,window,db,getScope,getStock,getSh
     else if(suggested.length)row.append(el('p','caption','照合候補があります。自動確定はしません。'));
    }
    if(c.selected&&c.action!=='skip')registrations++;
-   if(c.purchase&&c.shopping_id)purchases++;
+   if(c.purchase&&c.shopping_id&&(source==='receipt'||c.selected&&c.action!=='skip'))purchases++;
    $('importRows').append(row);
   }
   $('importSummary').textContent='冷蔵庫 '+registrations+'件 ／ 購入済み更新 '+purchases+'件';busy();
