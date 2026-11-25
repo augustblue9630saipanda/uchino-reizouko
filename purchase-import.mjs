@@ -56,7 +56,7 @@ export function createPurchaseImport({document,window,db,getScope,getStock,getSh
    if(c.purchase&&c.shopping_id&&(source==='receipt'||c.selected&&c.action!=='skip'))purchases++;
    $('importRows').append(row);
   }
-  $('importSummary').textContent='冷蔵庫 '+registrations+'件 ／ 購入済み更新 '+purchases+'件';busy();
+  $('importSummary').textContent='冷蔵庫 '+registrations+'件 ／ 購入済み更新 '+purchases+'件';busy();$('importSave').disabled=saving||locked||!registrations&&!purchases;
  }
  async function openShopping(){
   if(!ready())return;reset();source='shopping';const s=scope();
