@@ -1,5 +1,5 @@
 import {createClient} from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
-import {createPurchaseImport} from './purchase-import.mjs?v=20261125.2';
+import {createPurchaseImport} from './purchase-import.mjs?v=20261125.3';
 import {createFeedback} from './feedback.mjs?v=20261120.2';
 import {japanToday,validDay,registrationDay,ageLabel,sortPantry,moodOptions} from './supabase/functions/generate-dinner/context.mjs?v=20261124.1';
 

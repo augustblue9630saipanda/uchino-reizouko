@@ -6,13 +6,13 @@ const pantryKey=ingredientKey;
 
 export function createPurchaseImport({document,window,db,getScope,getStock,getShopping,refresh,notify,openSheet,el,button,categoryFor,foodGlyph,prepareReceiptImage}){
  const $=id=>document.getElementById(id);
- let candidates=[],batch=null,source='shopping',receiptKey=null,file=null,photoURL=null,version=0,loading=false,saving=false,locked=false;
+ let candidates=[],batch=null,source='shopping',receiptKey=null,file=null,photoURL=null,version=0,loading=false,saving=false,locked=false,receiptController=null;
  const scope=()=>({...getScope(),version});
  const current=s=>s.version===version&&s.scopeVersion===getScope().scopeVersion&&s.householdId===getScope().householdId&&s.userId===getScope().userId;
  const ready=()=>!!getScope().householdId&&!!getScope().userId;
  const id=()=>crypto.randomUUID();
  function revokePhoto(){if(photoURL)URL.revokeObjectURL(photoURL);photoURL=null;file=null;$('receiptPhoto').removeAttribute('src');$('receiptPreview').classList.add('hidden');$('receiptLibrary').value='';$('receiptCamera').value='';}
- function reset(){version++;candidates=[];batch=null;receiptKey=null;loading=false;saving=false;locked=false;revokePhoto();busy();$('importRows').replaceChildren();$('importStatus').textContent='';$('receiptStatus').textContent='';}
+ function reset(){version++;receiptController?.abort();receiptController=null;candidates=[];batch=null;receiptKey=null;loading=false;saving=false;locked=false;revokePhoto();busy();$('importRows').replaceChildren();$('importStatus').textContent='';$('receiptStatus').textContent='';}
  function busy(){
   $('importSave').disabled=saving||locked;$('importAddRow').disabled=saving||locked;$('receiptRead').disabled=loading||!file;
   $('receiptLibrary').disabled=loading;$('receiptCamera').disabled=loading;
@@ -75,15 +75,15 @@ export function createPurchaseImport({document,window,db,getScope,getStock,getSh
   try{
    const bytes=await selectedFile.arrayBuffer();const digest=await crypto.subtle.digest('SHA-256',bytes);receiptKey=[...new Uint8Array(digest)].map(x=>x.toString(16).padStart(2,'0')).join('');
    const image=await prepareReceiptImage(selectedFile);if(!current(s))return;$('receiptStatus').textContent='商品を読み取っています…（通常は数十秒・最大約1分）';
-   controller=new AbortController();const timer=setTimeout(()=>controller.abort(),65000);let response;
+   controller=new AbortController();receiptController=controller;const timer=setTimeout(()=>controller.abort(),65000);let response;
    try{response=await db.functions.invoke('scan-receipt',{body:{householdId:s.householdId,...image},signal:controller.signal});}finally{clearTimeout(timer);}
    if(!current(s))return;const {data,error}=response;
-   if(error){let text='読み取りに失敗しました。写真を明るく、まっすぐ撮って再試行してください。';try{const body=await error.context?.json();if(body?.error)text=body.error;}catch{}throw Error(text);}
+   if(error){if(controller.signal.aborted||error.context?.name==='AbortError')throw new DOMException('timeout','AbortError');let text='読み取りに失敗しました。写真を明るく、まっすぐ撮って再試行してください。';try{const body=await error.context?.json();if(body?.error)text=body.error;}catch{}throw Error(text);}
    if(!Array.isArray(data?.items)||data.householdId!==s.householdId)throw Error('読み取り結果を確認できませんでした。再試行してください。');
    await refresh();if(!current(s))return;batch=id();candidates=data.items.map(i=>baseRow(i.originalName,{name:i.name,category:i.category,kind:i.kind,quantityText:i.quantityText||'',selected:i.kind==='食材'}));
    $('importTitle').textContent='レシートの商品を確認';$('importStatus').textContent=candidates.length?'約'+Math.ceil(data.elapsedMs/1000)+'秒で読み取りました。誤読や分類を必ず確認してください。':'商品を読み取れませんでした。手動で候補を追加するか、写真を撮り直してください。';render();openSheet('purchaseImportDialog');revokePhoto();
   }catch(e){if(current(s))$('receiptStatus').textContent=e.name==='AbortError'?'時間がかかりすぎたため中断しました。明細を分けて撮影し、再試行してください。':e.message;}
-  finally{if(current(s)){loading=false;busy();}}
+  finally{if(receiptController===controller)receiptController=null;if(current(s)){loading=false;busy();}}
  };
  $('importAddRow').onclick=()=>{if(saving||locked)return;candidates.push(baseRow('',{selected:true,kind:'要確認'}));render();};
  $('importSave').onclick=async()=>{
